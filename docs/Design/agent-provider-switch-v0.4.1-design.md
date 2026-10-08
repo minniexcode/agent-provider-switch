@@ -4,7 +4,7 @@
 stateful, both touching lock discipline. No architecture change: both registries, the projection
 model, and the `0.3.1` security contracts are untouched.
 
-Its companion documents are `docs/Design/codex-switch-v0.4.0-design.md` (CI, test portability, boolean
+Its companion documents are `docs/Design/agent-provider-switch-v0.4.0-design.md` (CI, test portability, boolean
 flags, exit codes) and the roadmap's Phase 2b section.
 
 **Depends on `0.4.0`.** Both items are verified with fixtures that release builds: a deterministic
@@ -15,7 +15,7 @@ Neither exists today.
 than line numbers. Every `file:line` citation in the roadmap drifted within a single release, and a
 document that is wrong within one commit is worse than one that is vague.
 
-Source of record: `docs/codex-switch-2.x-roadmap.md` §2 — `P0-5`, `P0-2`, `P0-3`.
+Source of record: `docs/agent-provider-switch-2.x-roadmap.md` §2 — `P0-5`, `P0-2`, `P0-3`.
 
 ## Overview
 

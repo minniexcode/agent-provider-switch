@@ -4,14 +4,14 @@
 change: both registries, the projection model, the command set, and the `0.3.1` security contracts are
 untouched. No new command, no new storage format, no change to a recovery path.
 
-Its two companion documents are `docs/Design/codex-switch-v0.4.1-design.md` (stale-lock recovery,
+Its two companion documents are `docs/Design/agent-provider-switch-v0.4.1-design.md` (stale-lock recovery,
 backup retention) and the roadmap's Phase 2a section.
 
 **Citation convention.** This document names symbols (`getSingleOption()`, `resolveCommandFromArgv()`)
 rather than line numbers. Every `file:line` citation in the roadmap drifted within a single release,
 and a document that is wrong within one commit is worse than one that is vague.
 
-Source of record: `docs/codex-switch-2.x-roadmap.md` §2 — `P1-1`, `P1-2`, `P1-3`, `P1-4`, `P1-5`,
+Source of record: `docs/agent-provider-switch-2.x-roadmap.md` §2 — `P1-1`, `P1-2`, `P1-3`, `P1-4`, `P1-5`,
 `P1-9`.
 
 ## Overview

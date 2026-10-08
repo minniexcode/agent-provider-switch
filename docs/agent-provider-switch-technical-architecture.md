@@ -1,11 +1,11 @@
-# codex-switch Technical Architecture
+# agent-provider-switch Technical Architecture
 
 Current version: `0.2.1`
 
 Current fact sources:
 
-- [`PRD/codex-switch-prd-v0.2.1.md`](./PRD/codex-switch-prd-v0.2.1.md)
-- [`Design/codex-switch-v0.2.1-design.md`](./Design/codex-switch-v0.2.1-design.md)
+- [`PRD/agent-provider-switch-prd-v0.2.1.md`](./PRD/agent-provider-switch-prd-v0.2.1.md)
+- [`Design/agent-provider-switch-v0.2.1-design.md`](./Design/agent-provider-switch-v0.2.1-design.md)
 - [`cli-usage.md`](./cli-usage.md)
 
 ## Layers
@@ -29,7 +29,7 @@ src/infra/         compatibility facades for storage/runtime helpers
 Tool home stores managed state:
 
 ```text
-codex-switch.json
+agent-provider-switch.json
 providers.json
 backups/
 ```

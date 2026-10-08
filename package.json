@@ -1,11 +1,11 @@
 {
-  "name": "@minniexcode/codex-switch",
-  "version": "0.4.1",
+  "name": "@minniexcode/agent-provider-switch",
+  "version": "1.0.0",
   "description": "Local-first CLI for managing and switching Codex and Claude Code provider routing.",
   "license": "MIT",
   "type": "commonjs",
   "bin": {
-    "codexs": "dist/cli.js"
+    "aps": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -15,6 +15,7 @@
   ],
   "keywords": [
     "codex",
+    "claude-code",
     "cli",
     "switch",
     "provider",
@@ -26,12 +27,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/minniexcode/codex-switch.git"
+    "url": "git+https://github.com/minniexcode/agent-provider-switch.git"
   },
   "bugs": {
-    "url": "https://github.com/minniexcode/codex-switch/issues"
+    "url": "https://github.com/minniexcode/agent-provider-switch/issues"
   },
-  "homepage": "https://github.com/minniexcode/codex-switch#readme",
+  "homepage": "https://github.com/minniexcode/agent-provider-switch#readme",
   "publishConfig": {
     "access": "public"
   },

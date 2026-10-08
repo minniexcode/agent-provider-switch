@@ -1,6 +1,6 @@
 # Testing
 
-Current version: `0.4.1`
+Current version: `1.0.0`
 
 There are two suites, and they cover different things on purpose.
 
@@ -14,7 +14,7 @@ Tests call `runCli(argv, io)` in-process through `runBuiltCli()`, which means th
 
 Every temporary directory is created through `makeTempDir()` in `tests/helpers.js`, which registers it for removal. `run-tests.js` calls `cleanupTempDirs()` after each suite and a `process.on("exit")` backstop covers the failure path, so a full run leaves nothing behind. Nothing calls `fs.rmSync` on a test directory directly.
 
-`runBuiltCli()` points `CODEXS_CODEX_DIR` at a temporary directory whenever the call passes no `--codex-dir`, so a spec that forgets it cannot reach a real `~/.codex`. `withClaudeEnv()` is the only safe way to run a Claude command: it verifies `CODEXS_CLAUDE_DIR` resolves inside a temporary directory before running anything, because `switch --claude` replaces `settings.json`. **Pass `--json` on every Claude spec invocation** — `canPrompt()` is true whenever the suite runs in a terminal, so a missing `--json` blocks on an inquirer prompt and hangs the suite instead of failing it.
+`runBuiltCli()` points `APS_CODEX_DIR` at a temporary directory whenever the call passes no `--codex-dir`, so a spec that forgets it cannot reach a real `~/.codex`. `withClaudeEnv()` is the only safe way to run a Claude command: it verifies `APS_CLAUDE_DIR` resolves inside a temporary directory before running anything, because `switch --claude` replaces `settings.json`. **Pass `--json` on every Claude spec invocation** — `canPrompt()` is true whenever the suite runs in a terminal, so a missing `--json` blocks on an inquirer prompt and hangs the suite instead of failing it.
 
 ## The real-process suite
 
@@ -28,10 +28,10 @@ The isolation is the point:
 
 - One sandbox root per case, holding `home/`, `codex/`, and `claude/`.
 - All three roots are asserted to resolve inside the sandbox **before any child process runs**, and the sandbox is asserted not to sit inside the repo or the user's home directory.
-- The child environment is built explicitly: `process.env` minus every ambient `CODEXS_*` and minus `NODE_ENV`, plus the three overrides.
+- The child environment is built explicitly: `process.env` minus every ambient `APS_*` and minus `NODE_ENV`, plus the three overrides.
 - If a check fails the runner **refuses to run**, rather than warning.
 
-A developer's real `~/.codex`, `~/.claude`, and `~/.config/codex-switch` are never touched. That matters beyond tidiness: the first mutating command against a real tool home prunes its backups to the retention count, irreversibly.
+A developer's real `~/.codex`, `~/.claude`, and `~/.config/agent-provider-switch` are never touched. That matters beyond tidiness: the first mutating command against a real tool home prunes its backups to the retention count, irreversibly.
 
 Interactive (inquirer) paths are out of scope for both suites this round: a TTY is required, so every selector, confirmation, and `migrate` wizard branch is uncovered.
 
@@ -49,10 +49,11 @@ npm pack --dry-run
 
 ## Required Coverage
 
-Focus on the dual-target contract, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
+Focus on the dual-target contract, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
 
-- Version metadata is `0.4.1` in `package.json` and both spots in `package-lock.json`, and `codexs --version` prints it.
-- Current docs point to `docs/PRD/codex-switch-prd-v0.4.1.md` and `docs/Design/codex-switch-v0.4.1-design.md`, and the PRD/Design pair exists for every version on the `0.2.1 → 0.4.1` line.
+- Version metadata is `1.0.0` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
+- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.0.0.md` and `docs/Design/agent-provider-switch-v1.0.0-design.md`, and the PRD/Design pair exists for every version on the `0.3.0 → 1.0.0` line.
+- The legacy tool home moves once, and only when `APS_HOME` is unset, the new home is absent, and the old lock has no live owner.
 - Help exposes only current commands: `init`, `migrate`, `list`, `show`, `current`, `status`, `config show`, `config list-profiles`, `add`, `edit`, `switch`, `remove`, `import`, `export`, `backups list`, `backups prune`, `unlock`, `rollback`, `doctor`, and deprecated `setup`.
 - Fresh provider flow: `init -> add -> switch -> status -> doctor`.
 - Base URL drift diagnostics.
@@ -69,7 +70,7 @@ Focus on the dual-target contract, the `0.4.1` recovery guarantees, and the `0.3
 - `restoreManifest` rejects a restore path outside the allowed roots and leaves the named file untouched.
 - On POSIX, a managed write lands at `0600` for files and `0700` for created directories.
 - The suite runs green with no `dev-codex/` present; Codex fixtures are generated per test by `makeCodexFixture()`.
-- The Claude provider workflow (`add`, `switch`, `list`, `current`, `show`, `remove`) runs end to end against a `CODEXS_CLAUDE_DIR` that is verified to sit inside a temporary directory.
+- The Claude provider workflow (`add`, `switch`, `list`, `current`, `show`, `remove`) runs end to end against a `APS_CLAUDE_DIR` that is verified to sit inside a temporary directory.
 
 ### Recovery
 
@@ -96,4 +97,4 @@ Do not add tests for removed `0.2.1` runtime experiments such as Copilot SDK int
 - The POSIX permission assertions in `tests/secret-handling.spec.js` return early on Windows, so the `0600` / `0700` code path has no executable coverage on that platform. The `ubuntu-latest` leg of `.github/workflows/ci.yml` is the only place it runs.
 - Interactive paths — inquirer selectors, confirmations, `migrate`'s wizard, `PROMPT_CANCELLED` — have no coverage in either suite.
 - The E2E suite proves the binary works against synthetic roots. It does not prove that a developer's live configuration survives a real `switch`; nothing in the repo exercises a real `~/.codex` or `~/.claude`, deliberately.
-- `migrate` is the one command that ignores `CODEXS_CODEX_DIR` (`codexDirExplicit` is set only by a literal `--codex-dir`). Its non-interactive surface is covered; its happy path needs a TTY and is not.
+- `migrate` is the one command that ignores `APS_CODEX_DIR` (`codexDirExplicit` is set only by a literal `--codex-dir`). Its non-interactive surface is covered; its happy path needs a TTY and is not.

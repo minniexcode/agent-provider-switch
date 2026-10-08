@@ -16,9 +16,9 @@ another process left behind, the other deletes directories — and both need the
 fixture and reliable temp-directory teardown that `0.4.0` built. Landing them on the old harness
 would mean the riskiest change in the line arriving with the least reliable verification.
 
-Source of record for the findings: `docs/codex-switch-2.x-roadmap.md` §2 — `P0-5` (stale lock),
+Source of record for the findings: `docs/agent-provider-switch-2.x-roadmap.md` §2 — `P0-5` (stale lock),
 `P0-2` (unbounded backups), `P0-3` (same-second collision). Design detail:
-`docs/Design/codex-switch-v0.4.1-design.md`.
+`docs/Design/agent-provider-switch-v0.4.1-design.md`.
 
 ## Version
 
@@ -124,7 +124,7 @@ second produce two distinct directories. A `rollback` with no argument still res
 ## Release Mechanics
 
 - `package.json` and both `package-lock.json` version fields.
-- `docs/PRD/codex-switch-prd-v0.4.1.md` and `docs/Design/codex-switch-v0.4.1-design.md` exist, which
+- `docs/PRD/agent-provider-switch-prd-v0.4.1.md` and `docs/Design/agent-provider-switch-v0.4.1-design.md` exist, which
   the release contract asserts for the current line.
 - `tests/release-contract.spec.js` version assertions and its version regex.
 - `CHANGELOG.md` entry.

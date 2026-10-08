@@ -1,39 +1,41 @@
 # README.AI
 
-This file is the current AI-facing fact sheet for `@minniexcode/codex-switch`.
+This file is the current AI-facing fact sheet for `@minniexcode/agent-provider-switch`.
 
-Current repository version: `0.4.1`
+Current repository version: `1.0.0`
 
 Current fact sources:
 
-- `docs/PRD/codex-switch-prd-v0.4.1.md`
-- `docs/Design/codex-switch-v0.4.1-design.md`
-- `docs/PRD/codex-switch-prd-v0.4.0.md`
-- `docs/Design/codex-switch-v0.4.0-design.md`
-- `docs/PRD/codex-switch-prd-v0.3.1.md`
-- `docs/Design/codex-switch-v0.3.1-design.md`
-- `docs/PRD/codex-switch-prd-v0.3.0.md`
-- `docs/Design/codex-switch-v0.3.0-design.md`
-- `docs/PRD/codex-switch-prd-v0.2.1.md`
-- `docs/Design/codex-switch-v0.2.1-design.md`
+- `docs/PRD/agent-provider-switch-prd-v1.0.0.md`
+- `docs/Design/agent-provider-switch-v1.0.0-design.md`
+- `docs/PRD/agent-provider-switch-prd-v0.4.1.md`
+- `docs/Design/agent-provider-switch-v0.4.1-design.md`
+- `docs/PRD/agent-provider-switch-prd-v0.4.0.md`
+- `docs/Design/agent-provider-switch-v0.4.0-design.md`
+- `docs/PRD/agent-provider-switch-prd-v0.3.1.md`
+- `docs/Design/agent-provider-switch-v0.3.1-design.md`
+- `docs/PRD/agent-provider-switch-prd-v0.3.0.md`
+- `docs/Design/agent-provider-switch-v0.3.0-design.md`
+- `docs/PRD/agent-provider-switch-prd-v0.2.1.md`
+- `docs/Design/agent-provider-switch-v0.2.1-design.md`
 - `docs/cli-usage.md`
 
 ## Product Positioning
 
-`codex-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects Codex `model_provider` sections, writes the active top-level `model` / `model_provider` route, switches Claude Code `settings.json` profiles, and maintains backups around mutating commands.
+`agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects Codex `model_provider` sections, writes the active top-level `model` / `model_provider` route, switches Claude Code `settings.json` profiles, and maintains backups around mutating commands.
 
-In `0.4.1`, there are two managed workflows:
+In `1.0.0`, there are two managed workflows:
 1. **Codex providers** — OpenAI-compatible provider records projected into `config.toml` / `auth.json`.
 2. **Claude Code providers** (via `--claude` flag) — full `settings.json` profiles stored and switched atomically.
 
 ## Primary Workflow (Codex)
 
 ```bash
-codexs init
-codexs add <provider> --profile <model-provider-id> --model <model> --api-key <key> [--base-url <url>]
-codexs switch <provider>
-codexs status
-codexs doctor
+aps init
+aps add <provider> --profile <model-provider-id> --model <model> --api-key <key> [--base-url <url>]
+aps switch <provider>
+aps status
+aps doctor
 ```
 
 `--profile` means managed `model_provider` id alias. It is not the legacy Codex top-level `profile` selector.
@@ -41,13 +43,13 @@ codexs doctor
 ## Claude Code Workflow
 
 ```bash
-codexs add --claude <name> --from-file <settings.json>
-codexs switch --claude <name>
-codexs current --claude
-codexs list --claude
-codexs show --claude <name>
-codexs show --claude <name> --reveal
-codexs remove --claude <name> --force
+aps add --claude <name> --from-file <settings.json>
+aps switch --claude <name>
+aps current --claude
+aps list --claude
+aps show --claude <name>
+aps show --claude <name> --reveal
+aps remove --claude <name> --force
 ```
 
 Claude providers store the entire `settings.json` as an opaque blob. Switching replaces the whole file atomically with backup/rollback.
@@ -92,12 +94,12 @@ All commands accept `--json` where the parser supports it, and `--codex-dir <pat
 Tool home:
 
 ```text
-~/.config/codex-switch/
-  codex-switch.json
+~/.config/agent-provider-switch/
+  agent-provider-switch.json
   providers.json
   claude-providers.json
   backups/
-  .codex-switch.lock
+  .aps.lock
 ```
 
 Target Codex directory:
@@ -124,18 +126,18 @@ Managed projection for current Codex versions is route-first:
 
 Do not present top-level `profile` or `[profiles.*]` as the current managed runtime path. `--create-profile` writes the `[profiles.<id>]` section for older Codex builds that route through it; it is an explicit opt-in and is not the default projection. Those sections may otherwise be inspected for adoption or legacy diagnostics only.
 
-Every write command takes one lock (`<toolHome>/.codex-switch.lock`, shared by both targets) and snapshots the files it touches into `backups/` first. Backup directory names are `YYYYMMDD-HHmmssSSS` and are created exclusively, so two mutations in the same second cannot collide; the directory's path is returned by the create rather than re-derived from the timestamp.
+Every write command takes one lock (`<toolHome>/.aps.lock`, shared by both targets) and snapshots the files it touches into `backups/` first. Backup directory names are `YYYYMMDD-HHmmssSSS` and are created exclusively, so two mutations in the same second cannot collide; the directory's path is returned by the create rather than re-derived from the timestamp.
 
 ## Locks And Retention
 
-- A killed process leaves its lock behind. `codexs unlock` clears it only when the recorded owner is provably gone; a live owner is refused because a false takeover corrupts state where a false conflict only inconveniences. `codexs unlock --force` is the documented override for a recycled pid. No lock present is success.
+- A killed process leaves its lock behind. `aps unlock` clears it only when the recorded owner is provably gone; a live owner is refused because a false takeover corrupts state where a false conflict only inconveniences. `aps unlock --force` is the documented override for a recycled pid. No lock present is success.
 - There is no TTL-based takeover. A slow `migrate` can exceed any timer, so a pid that looks live is treated as live.
-- Backups retain the newest 20 by default. `codexs backups prune [--keep N]` is the manual path and runs automatically after every successful mutation.
+- Backups retain the newest 20 by default. `aps backups prune [--keep N]` is the manual path and runs automatically after every successful mutation.
 - A directory that any surviving manifest still references is never deleted, because rollback resolves through it. Directories whose manifest is missing or unreadable are reported rather than deleted.
 
 ## Current Non-Goals
 
-`0.4.1` does not include:
+`1.0.0` does not include:
 
 - Copilot SDK integration.
 - GitHub device-flow login.

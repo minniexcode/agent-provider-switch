@@ -1,15 +1,15 @@
 # codex-switch 命令设计说明
 
 > 状态说明：这份文档是历史跨版本参考，不是当前 release contract。
-> 当前事实源请改看 [`docs/cli-usage.md`](./cli-usage.md)、[`docs/PRD/codex-switch-prd-v0.2.1.md`](./PRD/codex-switch-prd-v0.2.1.md)、[`docs/Design/codex-switch-v0.2.1-design.md`](./Design/codex-switch-v0.2.1-design.md)。
+> 当前事实源请改看 [`docs/cli-usage.md`](./cli-usage.md)、[`docs/PRD/agent-provider-switch-prd-v0.2.1.md`](./PRD/agent-provider-switch-prd-v0.2.1.md)、[`docs/Design/agent-provider-switch-v0.2.1-design.md`](./Design/agent-provider-switch-v0.2.1-design.md)。
 
 ## 文档信息
 
 - 文档类型：命令设计文档
 - 适用范围：`codex-switch` MVP
 - 关联文档：
-  - [`PRD/codex-switch-prd-v0.1.0.md`](./PRD/codex-switch-prd-v0.1.0.md)
-  - [`codex-switch-technical-architecture.md`](./codex-switch-technical-architecture.md)
+  - [`PRD/agent-provider-switch-prd-v0.1.0.md`](./PRD/agent-provider-switch-prd-v0.1.0.md)
+  - [`agent-provider-switch-technical-architecture.md`](./agent-provider-switch-technical-architecture.md)
 
 ## 1. 文档目标
 

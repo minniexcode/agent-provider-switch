@@ -11,7 +11,7 @@ Codex path was written with secret handling in mind (`maskSecret()`, a documente
 the Claude path was not. This release closes that asymmetry and fixes two write-safety defects that
 were found alongside it.
 
-Source of record for the findings: `docs/codex-switch-2.x-roadmap.md` §2 — `P0-1` (Claude token
+Source of record for the findings: `docs/agent-provider-switch-2.x-roadmap.md` §2 — `P0-1` (Claude token
 masking), `P1-7`, `P1-8`, plus the file-permission, non-atomic-write, and rollback-manifest
 findings. This release predates the roadmap's renumbering: the write and rollback findings are
 `P0-4` and `P0-6` in the current inventory, and the permission finding has since left it.

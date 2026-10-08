@@ -137,11 +137,11 @@ model_reasoning_effort = "high"
 approval_policy = "never"
 ```
 
-Important `codex-switch` note:
+Important `agent-provider-switch` note:
 
 - official Codex still supports profiles
-- `codex-switch` `0.1.1` does not treat top-level `profile` as the recommended managed runtime selector
-- in `codex-switch`, legacy `profile` and `[profiles.*]` are mainly inspect-and-adopt inputs for `migrate`, `doctor`, and `config` inspection flows
+- `agent-provider-switch` `0.1.1` does not treat top-level `profile` as the recommended managed runtime selector
+- in `agent-provider-switch`, legacy `profile` and `[profiles.*]` are mainly inspect-and-adopt inputs for `migrate`, `doctor`, and `config` inspection flows
 
 ## 4. `config.toml` by topic
 
@@ -222,9 +222,9 @@ Related Bedrock keys:
 - `model_providers.amazon-bedrock.aws.profile`
 - `model_providers.amazon-bedrock.aws.region`
 
-#### `codex-switch` 0.1.1 managed projection
+#### `agent-provider-switch` 0.1.1 managed projection
 
-When `codex-switch` manages a direct OpenAI-compatible route for Codex `0.134.0+`, it intentionally projects a narrower runtime shape than the full official provider schema:
+When `agent-provider-switch` manages a direct OpenAI-compatible route for Codex `0.134.0+`, it intentionally projects a narrower runtime shape than the full official provider schema:
 
 - top-level `model` is the active model selector
 - top-level `model_provider` is the active route selector
@@ -236,7 +236,7 @@ When `codex-switch` manages a direct OpenAI-compatible route for Codex `0.134.0+
 
 Authentication is projected through `auth.json` with `OPENAI_API_KEY`, not through `env_key` in the managed runtime config.
 
-That is a `codex-switch` product decision, not a limitation of Codex itself. If you hand-write or independently manage Codex config, `env_key` remains a valid official mechanism.
+That is a `agent-provider-switch` product decision, not a limitation of Codex itself. If you hand-write or independently manage Codex config, `env_key` remains a valid official mechanism.
 
 ### 4.3.1 `openai_base_url` vs custom providers
 
@@ -565,7 +565,7 @@ http_headers = { "X-Team" = "platform" }
 
 This is an official Codex-style custom provider example.
 
-If you are using `codex-switch` managed direct-provider projection instead, the runtime projection is intentionally narrower:
+If you are using `agent-provider-switch` managed direct-provider projection instead, the runtime projection is intentionally narrower:
 
 ```toml
 model = "gpt-5.4"

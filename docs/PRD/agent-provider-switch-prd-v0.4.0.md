@@ -20,9 +20,9 @@ retention). It is deliberately sequenced after this one: the lock work needs a d
 fixture and a harness whose teardown does not delete the directory under test, and both of those are
 built here.
 
-Source of record for the findings: `docs/codex-switch-2.x-roadmap.md` §2 — `P1-1` and `P1-2` (flag
+Source of record for the findings: `docs/agent-provider-switch-2.x-roadmap.md` §2 — `P1-1` and `P1-2` (flag
 parsing), `P1-3`, `P1-4`, `P1-5` (exit codes and the error envelope), `P1-9` (test portability).
-Design detail: `docs/Design/codex-switch-v0.4.0-design.md`.
+Design detail: `docs/Design/agent-provider-switch-v0.4.0-design.md`.
 
 ## Version
 
@@ -148,7 +148,7 @@ temporary directories.
 of them:
 
 - `package.json` and both `package-lock.json` version fields.
-- `docs/PRD/codex-switch-prd-v0.4.0.md` and `docs/Design/codex-switch-v0.4.0-design.md` exist, which
+- `docs/PRD/agent-provider-switch-prd-v0.4.0.md` and `docs/Design/agent-provider-switch-v0.4.0-design.md` exist, which
   the release contract asserts for the current line.
 - `tests/release-contract.spec.js` version assertions and its version regex.
 - `CHANGELOG.md` entry.

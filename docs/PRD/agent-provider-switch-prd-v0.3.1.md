@@ -4,7 +4,7 @@
 
 `0.3.1` is a security patch release for the `0.3.0` dual-target line of `@minniexcode/codex-switch`. It adds no new command surface and changes no architecture. It closes the secret-handling asymmetry between the Codex path (written with masking in mind) and the Claude path (which returned live tokens), and fixes two write-safety defects found alongside it.
 
-Source of record for the findings: `docs/codex-switch-2.x-roadmap.md` §2 — `P0-1` (Claude token masking), `P1-7`, `P1-8`, plus the file-permission, non-atomic-write, and rollback-manifest findings. This release predates the roadmap's renumbering: the write and rollback findings are `P0-4` and `P0-6` in the current inventory, and the permission finding has since left it. Design detail: `docs/Design/codex-switch-v0.3.1-design.md`.
+Source of record for the findings: `docs/agent-provider-switch-2.x-roadmap.md` §2 — `P0-1` (Claude token masking), `P1-7`, `P1-8`, plus the file-permission, non-atomic-write, and rollback-manifest findings. This release predates the roadmap's renumbering: the write and rollback findings are `P0-4` and `P0-6` in the current inventory, and the permission finding has since left it. Design detail: `docs/Design/agent-provider-switch-v0.3.1-design.md`.
 
 ## Version
 

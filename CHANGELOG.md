@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.0 - 2026-10-08
+
+Rename release. The tool stopped being Codex-only when `0.3.0` added Claude Code as a second target, and this release makes the name say so. One breaking change, no compatibility shims, no command-surface change.
+
+The old identity is gone rather than aliased: the binary is `aps`, not `codexs`; the npm package is `@minniexcode/agent-provider-switch`; the tool home is `~/.config/agent-provider-switch`; the environment variables are `APS_HOME` / `APS_CODEX_DIR` / `APS_CLAUDE_DIR`; the state files are `agent-provider-switch.json` and `.aps.lock`. The GitHub repository rename is a manual step outside this change.
+
+### Added
+
+- Automatic migration of a pre-`1.0.0` tool home. The first command after an upgrade moves `~/.config/codex-switch` to `~/.config/agent-provider-switch`, so existing provider records, Claude profiles, and backups stay the state the tool reads. The move is a same-filesystem rename — never a copy-then-delete, never a merge — and it is skipped when `APS_HOME` is set, when the new home already exists, or when the legacy lock has a live owner.
+- `docs/PRD/agent-provider-switch-prd-v1.0.0.md` and `docs/Design/agent-provider-switch-v1.0.0-design.md`.
+- `tests/tool-home-migration.spec.js` covering the move, every no-op guard, and the `APS_HOME` short-circuit.
+
+### Changed
+
+- The tool home, the tool config filename, the lock filename, the environment variables, the binary name, the npm package name, and the `CodexSwitchConfig` type all move to the `agent-provider-switch` / `aps` identity in one release.
+- Every identity literal now resolves through `src/storage/codex-paths.ts`. `dispatch.ts` and `claude-handlers.ts` previously rebuilt the tool-config, lock, and backups paths by hand, which is how an identity change leaves one spot stale.
+- All prior `docs/PRD/*` and `docs/Design/*` files are renamed by filename to match. Their bodies are unchanged: a `0.3.0` PRD naming `@minniexcode/codex-switch` is a true statement about `0.3.0`.
+
+### Notes
+
+- `codexs` is not kept as an alias. A forwarding script would keep the old name in `PATH`, in the docs, and in shell history indefinitely, which is the cost this release exists to stop paying.
+- A backup manifest taken before the rename records absolute paths under the old tool home, and rollback containment derives its allowed roots from the new one, so a pre-rename backup can be rejected with `ROLLBACK_PATH_REJECTED`. Prune pre-rename backups after upgrading.
+
 ## 0.4.1 - 2026-09-20
 
 Stateful-recovery release. Two commands added, both aimed at a state the tool could previously enter and not leave: a lock whose owner no longer exists, and a backups directory that grows without bound.
@@ -81,7 +104,7 @@ Security patch release for the `0.3.0` dual-target line. No architecture change:
 
 - `show --claude <name>` no longer returns live `ANTHROPIC_AUTH_TOKEN` / `ANTHROPIC_API_KEY` values, in human or `--json` output.
 - Codex `show --json` still returns the full `apiKey` by design; it is a documented automation contract and is unchanged in this release.
-- On Windows, `chmod`-based permission tightening is inert. The exposure there is at the NTFS ACL layer and is documented as an operator action in `docs/codex-switch-2.x-roadmap.md` (P0-2).
+- On Windows, `chmod`-based permission tightening is inert. The exposure there is at the NTFS ACL layer and is documented as an operator action in `docs/agent-provider-switch-2.x-roadmap.md` (P0-2).
 
 ## 0.3.0 - 2026-07-18
 

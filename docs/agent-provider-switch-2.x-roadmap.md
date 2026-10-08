@@ -1,6 +1,6 @@
-# codex-switch 2.x Roadmap
+# agent-provider-switch 2.x Roadmap
 
-A review of `@minniexcode/codex-switch` as of `0.3.1`, plus a phased plan for the 0.3.x → 0.4.x line.
+A review of `@minniexcode/agent-provider-switch` as of `0.3.1`, plus a phased plan for the 0.3.x → 0.4.x line.
 
 This is a **decision document**, not a fact source. It is deliberately not wired into the version
 assertions in `tests/release-contract.spec.js`.
@@ -41,15 +41,15 @@ This was a deliberate choice in the 0.3.0 design and this roadmap keeps it.
 
 **Observed state on a real machine.** These numbers drove several findings below:
 
-- `~/.config/codex-switch/backups/` holds **97 directories plus `latest.json`, 864 KB**.
+- `~/.config/agent-provider-switch/backups/` holds **97 directories plus `latest.json`, 864 KB**.
 - `claude-providers.json` holds 4 profiles (`copilot`, `copilot-pool`, `copilot-gpt`, `deepseek`).
   **Every one contains `ANTHROPIC_AUTH_TOKEN`**; `deepseek` also contains `ANTHROPIC_API_KEY`.
 - `claude-providers.json` reports mode **`0666`** to MSYS `stat`. **That number is a synthetic
   POSIX view, not a real permission** — the real exposure is an ACL one, described in the `0.3.1`
   Design document's Implementation Notes. It was never in this inventory.
 - Leftovers from the removed integration are still on disk and are never read or cleaned up:
-  `~/.config/codex-switch/github-token` (40 chars, shaped like a real GitHub PAT),
-  `~/.config/codex-switch/runtime/copilot-bridge-state.json`, `.../copilot-bridge.log`.
+  `~/.config/agent-provider-switch/github-token` (40 chars, shaped like a real GitHub PAT),
+  `~/.config/agent-provider-switch/runtime/copilot-bridge-state.json`, `.../copilot-bridge.log`.
 
 ---
 
@@ -70,7 +70,7 @@ The Codex side does this correctly — `showProvider()` masks `apiKey` unless `i
 registry documents the guarantee (`src/commands/registry.ts:103`).
 
 **Impact.** Every Claude profile on the observed machine carries a token, so
-`codexs show --claude deepseek` prints a live credential into terminal scrollback, screenshots,
+`aps show --claude deepseek` prints a live credential into terminal scrollback, screenshots,
 piped logs, and CI output.
 
 **Fix (decided): mask by default, add `--reveal`.**
@@ -116,7 +116,7 @@ truncated.
 reads it for liveness. There is no TTL and no force-unlock path. If the process is killed between
 acquire and release, the lock file persists and **every subsequent write command** returns
 `LOCK_CONFLICT` permanently. The only recovery is manually deleting
-`~/.config/codex-switch/.codex-switch.lock`.
+`~/.config/agent-provider-switch/.aps.lock`.
 
 **Impact.** The user is locked out of their own tool with no supported way back.
 
@@ -142,7 +142,7 @@ The argument parser treats any `--x` followed by a non-`--` token as `--x <value
 (`src/commands/args.ts:78-101`). So:
 
 ```
-codexs remove --force packycode     # "--force" swallows "packycode"
+aps remove --force packycode     # "--force" swallows "packycode"
 ```
 
 leaves `positionals` empty (`src/commands/handlers.ts:301-303`), and the command falls through to an
@@ -166,13 +166,13 @@ presence — `src/commands/handlers.ts:181-182` — silently receive `null` inst
 #### P1-3 · Unknown commands exit 0
 
 An unresolvable token leaves `parsed.command === null`, which prints full help and calls
-`process.exit(0)` (`src/cli.ts:52-55`). A typo like `codexs lst` looks like success to any script
+`process.exit(0)` (`src/cli.ts:52-55`). A typo like `aps lst` looks like success to any script
 or CI job.
 
 #### P1-4 · Synchronous parse errors bypass the error envelope
 
 `parseArgs()` throws synchronously (`src/commands/args.ts:25`), and `main()`'s synchronous section
-has no `try`/`catch` (`src/cli.ts:27-28`). `codexs --codex-dir` with no value produces a raw stack
+has no `try`/`catch` (`src/cli.ts:27-28`). `aps --codex-dir` with no value produces a raw stack
 trace instead of the structured failure envelope, breaking the `--json` automation contract.
 
 #### P1-5 · `status` renders a field that is never populated
@@ -310,7 +310,7 @@ of the function is a no-op.
 
 #### P2-6 · Documentation drift
 
-`docs/codex-switch-product-overview.md:3` and `docs/codex-switch-technical-architecture.md:3` still
+`docs/agent-provider-switch-product-overview.md:3` and `docs/agent-provider-switch-technical-architecture.md:3` still
 declare `0.2.1` and contain no `--claude` content — yet `README.md:193` and `README.AI.md` list them
 as **current** fact sources. (`docs/cli-usage.md:3,9` was brought up to the current version during
 the `0.3.1` release.) The release gate explicitly tolerates the remaining drift:
@@ -325,13 +325,13 @@ applies to the 0.1.2–0.1.5 entries.
   `CHANGELOG.md:23` states help text was updated for `--claude`. Only per-command registry usage
   lines were.
 - `--claude` is **silently ignored** on the 12 commands outside `CLAUDE_COMMANDS`
-  (`src/commands/claude-handlers.ts:22`). `codexs doctor --claude` runs the Codex doctor with no
+  (`src/commands/claude-handlers.ts:22`). `aps doctor --claude` runs the Codex doctor with no
   warning.
-- `codexs config` prints top-level help; the nested list is reachable only via `codexs help config`.
-- `codexs -h` works only by accident: `startIndex` skips index 0 (`src/commands/args.ts:66`), so the
-  `-h` is never parsed as a help request — the no-command fallback prints help anyway. `codexs -h list`
+- `aps config` prints top-level help; the nested list is reachable only via `aps help config`.
+- `aps -h` works only by accident: `startIndex` skips index 0 (`src/commands/args.ts:66`), so the
+  `-h` is never parsed as a help request — the no-command fallback prints help anyway. `aps -h list`
   ignores `list`.
-- `--codex-dir` consumes the next token unconditionally (`:22-30`), so `codexs list --codex-dir --json`
+- `--codex-dir` consumes the next token unconditionally (`:22-30`), so `aps list --codex-dir --json`
   resolves a directory literally named `--json`.
 - Undocumented flags: `--create-profile` (`add`, `edit`), `--switch-to` (`edit`), `--merge`
   (`import`) are implemented but absent from the registry usage strings
@@ -391,7 +391,7 @@ Roughly 300–350 of ~500 lines are structural repetition. **This is accepted, n
 #### P2-12 · Local machine leftovers
 
 Empty `bin/` (also gitignored), `tmp/isolated-codex-validation/` (June 2026, containing a full Codex
-runtime state: `auth.json`, sqlite logs, sandbox logs), and the `~/.config/codex-switch/` artifacts
+runtime state: `auth.json`, sqlite logs, sandbox logs), and the `~/.config/agent-provider-switch/` artifacts
 listed in §1.
 
 ---
@@ -404,7 +404,7 @@ Ordered so that each phase is independently shippable and reviewable.
 
 No architecture change. Highest value per line changed.
 
-**Design: [`docs/Design/codex-switch-v0.3.1-design.md`](./Design/codex-switch-v0.3.1-design.md).**
+**Design: [`docs/Design/agent-provider-switch-v0.3.1-design.md`](./Design/agent-provider-switch-v0.3.1-design.md).**
 
 **Status: shipped in `0.3.1` (2026-09-20).** All six items landed. Three deviations from this plan,
 recorded in the Design document's Implementation Notes:
@@ -424,19 +424,19 @@ recorded in the Design document's Implementation Notes:
    - `--reveal` (registered in `CLAUDE_COMMANDS`' flag set) restores current behaviour.
    - `--json` masks too. Add a second-pass guard in `renderClaudeHumanSuccess()`'s `show` case
      (`src/cli/output.ts:392-398`) so a future service-layer change cannot silently re-leak.
-   - **Acceptance:** `codexs show --claude deepseek` contains no real token;
-     `codexs show --claude deepseek --reveal` does.
+   - **Acceptance:** `aps show --claude deepseek` contains no real token;
+     `aps show --claude deepseek --reveal` does.
 2. **Tighten permissions on write.** New POSIX mode for
    `claude-providers.json`, `providers.json`, `auth.json` (`0o600`), and backup directories
    (`0o700`), applied in `writeTextFileAtomic()` / `ensureDir()` with a platform check that is a
    no-op on Windows. Repair the existing 4 files on next write.
-   - **Acceptance:** `stat -c %a ~/.config/codex-switch/claude-providers.json` reports `600` on
+   - **Acceptance:** `stat -c %a ~/.config/agent-provider-switch/claude-providers.json` reports `600` on
      Linux/macOS after any mutation; no error on Windows.
 3. **Widen error-detail masking.** Replace the `"apikey"` substring test
    (`src/storage/fs-utils.ts:59-61`) with a key-name regex, and mask values inside nested objects
    instead of `JSON.stringify`-ing them whole.
 4. **Make `export` loud.** Warn in the result payload and in human output when the exported payload
-   contains keys; suggest `codexs export --redact` as a follow-up option.
+   contains keys; suggest `aps export --redact` as a follow-up option.
 5. **Fix the non-atomic writes.** Drop the redundant `rmSync` from `writeTextFileAtomic()`
    (`src/storage/fs-utils.ts:20-22`) — Node's `renameSync` already replaces on both platforms — and
    route `writeOpenAiApiKeyAuth()` (`src/storage/auth-repo.ts:83`) through the helper.
@@ -449,8 +449,8 @@ recorded in the Design document's Implementation Notes:
 Split into two releases, ordered so the smaller stateless work proves out the reworked test harness
 before the stateful P0 work lands on top of it. **Phase 2a is `0.4.0`; Phase 2b is `0.4.1`.**
 
-**Designs: [`v0.4.0`](./Design/codex-switch-v0.4.0-design.md),
-[`v0.4.1`](./Design/codex-switch-v0.4.1-design.md).** The items below are the pre-design sketch: where
+**Designs: [`v0.4.0`](./Design/agent-provider-switch-v0.4.0-design.md),
+[`v0.4.1`](./Design/agent-provider-switch-v0.4.1-design.md).** The items below are the pre-design sketch: where
 an item disagrees with its Design, the Design is the settled record.
 
 #### Phase 2a — `0.4.0` Foundation and CLI contract
@@ -467,7 +467,7 @@ trustworthy first: exit codes cannot be tested at all until the harness stops re
    - Replace the `dev-codex/local-sandbox` dependency with a fixture the tests generate themselves
      (`tests/helpers.js:8`). Three tests are red on the author's machine today, not only on a fresh
      clone, so this is not hypothetical portability work.
-   - Fix the temp-directory leaks. `runBuiltCli()` uses the **codex directory as `CODEXS_HOME`** when
+   - Fix the temp-directory leaks. `runBuiltCli()` uses the **codex directory as `APS_HOME`** when
      `--codex-dir` appears, and the only cleanup is an unguarded `rmSync` inside a `finally` that
      fires on exactly that path — so it can delete a directory the test is still using, or fail a
      passing test on a Windows `EBUSY`.
@@ -475,7 +475,7 @@ trustworthy first: exit codes cannot be tested at all until the harness stops re
      mirroring it. Exit codes are untestable today because `printHelp()`/`outputFailure()` call
      `process.exit` and no test requires `dist/cli.js` at all.
    - **New `tests/claude-provider-workflow.spec.js`** covering add → switch → list → current → show
-     → remove. It **must** set and assert `CODEXS_CLAUDE_DIR` up front: `claudeSwitchProvider()`
+     → remove. It **must** set and assert `APS_CLAUDE_DIR` up front: `claudeSwitchProvider()`
      replaces `<claudeDir>/settings.json`, and that path resolves to the real `~/.claude` otherwise —
      a missing variable makes `npm test` rewrite the developer's own settings file.
    - **Acceptance:** `git clean -xdf && npm ci && npm test` passes on Windows and Linux, with no
@@ -490,28 +490,28 @@ trustworthy first: exit codes cannot be tested at all until the harness stops re
      `--claude` position-independent as a side effect.
    - `--reveal` is deliberately excluded — it is already stripped by exact token in that same pass,
      so listing it would be a no-op.
-   - **The compatibility claim is not true today.** `codexs add --claude copilot --from-file x`
+   - **The compatibility claim is not true today.** `aps add --claude copilot --from-file x`
      currently yields `positionals: []` with `--claude: ["copilot"]`; `copilot` becomes a positional
      only once this change lands. `resolveClaudeProviderName()`
      (`src/commands/claude-handlers.ts:37-48`) prefers `positionals[0]`, so it can be deleted in the
      same commit — but the parser fix and the deletion must ship together, and
-     `codexs remove --claude --force <name>` does not work at all today.
+     `aps remove --claude --force <name>` does not work at all today.
    - Fix the `required` parameter of `getSingleOption()` or remove it (P1-2). Removing it is
      correct: `add` relies on receiving `null` there in order to prompt.
-   - **Acceptance:** `codexs remove --force <name>` and `codexs remove --claude --force <name>` both
+   - **Acceptance:** `aps remove --force <name>` and `aps remove --claude --force <name>` both
      work; `resolveClaudeProviderName` no longer exists.
 3. **Exit codes and the error envelope.**
    - Unknown command → exit 1. **The fix lands in the parser, not `src/cli.ts:52-55`**: the parse
      result cannot distinguish "no command" from "unknown command" — eight distinct inputs produce an
      identical `ParsedCommand`, because `startIndex` skips index 0 when nothing resolved. Naively
-     changing the `cli.ts` branch makes `codexs --help` exit 1.
+     changing the `cli.ts` branch makes `aps --help` exit 1.
    - Wrap `main()`'s synchronous section in `try`/`catch` → `outputFailure` (`src/cli.ts:27-28`),
      reading `--json` from the **raw argv** for that path: a thrown parse leaves no parsed options, so
      the catch cannot otherwise tell whether the envelope was requested.
    - Fix the empty `status` field (`src/cli/output.ts:165`) — it reads `data.storage.toolHome.root`
      and `getStatus()` returns no `storage` key, so the line has always rendered empty.
-   - **Acceptance:** `codexs lst; echo $?` prints `1`; `codexs --json --codex-dir; echo $?` prints `1`
-     with a JSON envelope, not a stack trace; `codexs --help; echo $?` still prints `0`.
+   - **Acceptance:** `aps lst; echo $?` prints `1`; `aps --json --codex-dir; echo $?` prints `1`
+     with a JSON envelope, not a stack trace; `aps --help; echo $?` still prints `0`.
 
 #### Phase 2b — `0.4.1` Lock and backup safety
 
@@ -530,14 +530,14 @@ whose teardown does not delete the directory under test.
    - **No TTL fallback — settled against.** A TTL that can seize a lock from a live process will
      eventually seize it from a slow `migrate`, and a false takeover corrupts state where a false
      conflict only inconveniences. A recycled pid is therefore fail-closed, which is why the record
-     gains `hostname` and why `codexs unlock --force` is the documented way out.
+     gains `hostname` and why `aps unlock --force` is the documented way out.
    - **No audit line — settled against.** There is no log sink in the tool home, and adding one
      creates a new unbounded-growth and redaction surface. The takeover reports through the existing
      result payload.
    - `releaseLock()` re-reads and removes only a record it owns, and `acquireLock()` treats only
      `EEXIST` as a conflict — today any thrown code, including `EACCES` and `EROFS`, is reported as
      "another operation is running", which points at the wrong remedy on a read-only tool home.
-   - Add `codexs unlock [--force]`, and have `doctor` report an occupied or stale lock with the
+   - Add `aps unlock [--force]`, and have `doctor` report an occupied or stale lock with the
      owner, the operation, the age, and the remedy.
    - **Acceptance:** a process that acquires the lock and exits inside the critical section leaves a
      lock the next mutation takes over without manual file deletion. (The original `kill -9`
@@ -545,7 +545,7 @@ whose teardown does not delete the directory under test.
      `kill` addresses MSYS pids. The Design substitutes a `process.exit(0)`-inside-the-lock fixture,
      which `finally` does not unwind.)
 2. **Backup retention.**
-   - `codexs backups prune [--keep N]`, default retention 20, newest-first.
+   - `aps backups prune [--keep N]`, default retention 20, newest-first.
    - The prune also runs automatically after every successful mutation, and reports how many
      directories it removed. Settled — see §5.
    - `createTimestamp()` gains zero-padded milliseconds, and creation becomes an **exclusive**
@@ -567,8 +567,8 @@ whose teardown does not delete the directory under test.
 
 1. **Delete the dead code** (one commit, easy to review): all of `src/infra/`, the 5 dead `src/cli/`
    shims, every export in P2-2, the copilot-era remnants in P2-3, and the unused parameters in P2-4.
-2. **Resync the docs.** Bring `docs/cli-usage.md`, `docs/codex-switch-product-overview.md`, and
-   `docs/codex-switch-technical-architecture.md` to the current version with `--claude` sections, and
+2. **Resync the docs.** Bring `docs/cli-usage.md`, `docs/agent-provider-switch-product-overview.md`, and
+   `docs/agent-provider-switch-technical-architecture.md` to the current version with `--claude` sections, and
    tighten `tests/release-contract.spec.js:39` to a single current version so drift fails the build.
    Fix the "Unreleased" markers in `CHANGELOG.md`.
    Add a Claude section to top-level help (`src/commands/help.ts:32-81`). Document the
@@ -619,10 +619,10 @@ single-user local tool. Recorded as a non-goal in the v0.3.1 design.
 
 **Decided — `--reveal` is a global flag**, parsed in `parseArgs()`'s first pass alongside `--json`.
 Per-command registration would collide with the greedy `--flag value` rule (P1-1) and make
-`codexs show --reveal <name>` swallow the provider name. Settled in the v0.3.1 design, §1.
+`aps show --reveal <name>` swallow the provider name. Settled in the v0.3.1 design, §1.
 
 **Decided — `backups prune` runs automatically after every successful mutation**, with
-`codexs backups prune [--keep N]` as the manual control. Automatic caps growth with no user action.
+`aps backups prune [--keep N]` as the manual control. Automatic caps growth with no user action.
 The automatic path also performs the one-time reduction of the 97 existing directories on this
 machine, which is irreversible: those copies contain plaintext keys, so removing them is the point of
 P0-2, but the command must report how many it removed rather than doing it silently. Settled for

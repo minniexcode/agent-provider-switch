@@ -57,7 +57,7 @@ The one live file under `src/cli/` is `src/cli/output.ts`: the human and JSON re
 src/cli.ts              Entry point — argv parsing, --help/--version, lazily imports commands/dispatch
 src/commands/           Command registry, arg parsing (parseArgs), dispatch routing
   registry.ts           COMMANDS array: id, tokens, usage, details, examples, handler
-  dispatch.ts           Resolves the definition, resolves codexDir, calls the handler
+  dispatch.ts           Resolves the definition, migrates a legacy tool home, resolves codexDir, calls the handler
   handlers.ts           Main switch for Codex commands
   claude-handlers.ts    --claude flag dispatch (early-returns before the Codex path)
 src/cli/output.ts       Human + JSON rendering (the only live file in src/cli/)
@@ -70,8 +70,10 @@ src/domain/             Pure types, validation, errors, parsers (no I/O)
   secrets.ts            Secret-key pattern, maskSecret, maskSecretValues, redactSecretValues
   errors.ts             ErrorCode union + cliError() factory
 src/storage/            File I/O — read/write repos, path resolution
-  codex-paths.ts        ~/.config/codex-switch paths + ~/.codex target
+  codex-paths.ts        ~/.config/agent-provider-switch paths + ~/.codex target
+                        (also owns the identity constants and the frozen LEGACY_* names)
   claude-paths.ts       ~/.claude target paths
+  tool-home-migration.ts  Moves a pre-1.0.0 ~/.config/codex-switch home to the new location
 src/interaction/        Interactive prompts (inquirer-based)
 src/runtime/            Codex CLI detection/probing
 ```
@@ -82,12 +84,24 @@ Output rendering is pure: `renderSuccess` / `renderFailure` in `src/cli/output.t
 
 ### Dual-Target Model
 
-The CLI manages two independent targets via the same tool-home (`~/.config/codex-switch/`):
+The CLI manages two independent targets via the same tool-home (`~/.config/agent-provider-switch/`):
 
 - **Codex** (default): `providers.json` → projected into `~/.codex/config.toml` + `auth.json`
 - **Claude Code** (`--claude` flag): `claude-providers.json` → atomic replacement of `~/.claude/settings.json`
 
 `isClaudeCommand(command, commandOptions)` gates a fixed set (`add`, `switch`, `list`, `show`, `current`, `remove`). `handleRegisteredCommand()` checks it first and early-returns to `handleClaudeCommand()` **before** the `ctx.options.codexDir` null check, so Claude commands work with no Codex directory configured. All commands share one registry — there is no separate Claude command table.
+
+### Tool-Home Migration
+
+`ensureLegacyToolHomeMigrated()` runs once at the top of `executeCommand` — the single funnel every command passes through, so one call site covers both targets, `unlock` included. It runs *before* the tool-home paths are built, because those resolve to the new home.
+
+It moves `~/.config/codex-switch` → `~/.config/agent-provider-switch` only when **all** of these hold: `APS_HOME` is unset (checked before any filesystem call — the one thing standing between a bug here and the developer's real `~/.config`), the new home does not exist, the old one is a directory, and the old lock has no live or foreign owner. Both homes existing is a silent no-op: with no one-shot state marker, a warning there would fire on every command forever.
+
+Inside the legacy home, `codex-switch.json` and `.codex-switch.lock` are renamed *before* the directory is. That ordering is load-bearing. The directory rename is the only irreversible step, so everything retryable has to precede it; doing it first would leave the old config filename inside a home whose existence permanently satisfies the second guard, and the tool would then read the migrated data as a fresh install with no retry ever possible.
+
+The names it looks for come from the `LEGACY_*` constants in `src/storage/codex-paths.ts`. They are frozen and only ever read — never write to one, and never "update" them to match the current identity. Do not move this migration into `resolveToolHome()`: that is a pure resolver called several times per process, so the migration would run repeatedly, add probes to a hot path, and have no warning channel.
+
+The identity literals live in one place for the same reason. When renaming again, note that bare `codex` is **not** in scope — only `codex-switch` / `codexs` / `CODEXS_`. A blanket `codex` replace corrupts the Codex integration itself: `--codex-dir`, `~/.codex`, `[model_providers.*]`, `src/runtime/codex-cli.ts`, `MIN_SUPPORTED_CODEX_VERSION`.
 
 ### Secret Handling
 
@@ -106,24 +120,24 @@ Rollback is contained: `restoreManifest(manifest, allowedRoots)` requires an all
 
 ### Arg Parsing Quirk
 
-The arg parser (`src/commands/args.ts`) treats any `--flag nextToken` as `flag=nextToken` unless `nextToken` starts with `--`. So `codexs add --claude myname` assigns `"myname"` as the value of `--claude`. `resolveClaudeProviderName()` in `claude-handlers.ts` normalizes this by checking both positionals and the `--claude` flag value.
+The arg parser (`src/commands/args.ts`) treats any `--flag nextToken` as `flag=nextToken` unless `nextToken` starts with `--`. So `aps add --claude myname` assigns `"myname"` as the value of `--claude`. `resolveClaudeProviderName()` in `claude-handlers.ts` normalizes this by checking both positionals and the `--claude` flag value.
 
-`--reveal` sidesteps the quirk by being registered as a **global** flag: `parseArgs()`'s first pass matches tokens by exact equality, so it is stripped before the greedy second pass can swallow a provider name. Without this, `codexs show --reveal deepseek` would eat `deepseek`. Fixing the parser itself is Phase 2 (roadmap P1-1) — new boolean flags should be global until then.
+`--reveal` sidesteps the quirk by being registered as a **global** flag: `parseArgs()`'s first pass matches tokens by exact equality, so it is stripped before the greedy second pass can swallow a provider name. Without this, `aps show --reveal deepseek` would eat `deepseek`. Fixing the parser itself is Phase 2 (roadmap P1-1) — new boolean flags should be global until then.
 
 Pass 1 strips exactly three tokens by exact equality: `--json`, `--reveal`, `--codex-dir`. `--version`/`-v` and `--help` are not stripped there — they are detected afterwards by scanning the leftover tokens, so they must appear where the command-option pass will not consume them as a value.
 
 ## Version Bumps and Releases
 
-`tests/release-contract.spec.js` is the gate. It hardcodes the version in 4 assertions and asserts the PRD/Design docs for the current line exist. A version bump is not complete until:
+`tests/release-contract.spec.js` is the gate. It hardcodes the version in the `package.json` and both `package-lock.json` fields, asserts `--version` prints it, pins the package name and `bin` map across both files, and asserts the PRD/Design docs for the current line exist. A version bump is not complete until:
 
 1. `package.json` **and both spots** in `package-lock.json` (root `version` and `packages[""].version`).
 2. `tests/release-contract.spec.js` — update the version assertions and add the new `docs/PRD/` + `docs/Design/` existence checks.
 3. `CHANGELOG.md` — a new entry at the top.
 4. Docs that track the current version: `README.md`, `README.CN.md`, `README.AI.md`, `docs/cli-usage.md`, `docs/Tests/testing.md`.
-5. Add `docs/PRD/codex-switch-prd-v<version>.md` and `docs/Design/codex-switch-v<version>-design.md`. Every release carries both.
+5. Add `docs/PRD/agent-provider-switch-prd-v<version>.md` and `docs/Design/agent-provider-switch-v<version>-design.md`. Every release carries both.
 6. `npm run build && npx tsc --noEmit && node tests/run-tests.js`.
 
-`docs/codex-switch-product-overview.md` and `docs/codex-switch-technical-architecture.md` deliberately lag a version or two; the contract test's version regex tolerates that. `docs/codex-switch-2.x-roadmap.md` is the source of record for outstanding findings — cite its IDs (e.g. P1-9) in comments and commits.
+`docs/agent-provider-switch-product-overview.md` and `docs/agent-provider-switch-technical-architecture.md` deliberately lag a version or two; the contract test's version regex tolerates that. `docs/agent-provider-switch-2.x-roadmap.md` is the source of record for outstanding findings — cite its IDs (e.g. P1-9) in comments and commits.
 
 ## Style
 
@@ -137,10 +151,10 @@ Pass 1 strips exactly three tokens by exact equality: `--json`, `--reveal`, `--c
 
 - Plain Node specs using `node:assert/strict`
 - Test helpers in `tests/helpers.js`: `makeTempDir()`, `withEnv()`, `makeToolHomeWithManagedState()`, `withClaudeEnv()`, `makeCodexFixture()`, `runBuiltCli()`, `runJsonCli()`
-- `runBuiltCli()` swaps `CODEXS_HOME` and calls `runCli` in-process; `runJsonCli()` additionally parses the JSON envelope from stdout on success or stderr on failure. Both accept `--codex-dir` in `args`
-- `runBuiltCli()` points `CODEXS_CODEX_DIR` at a temporary directory whenever the call passes no `--codex-dir`, so a spec that forgets it cannot operate on the real `~/.codex`
+- `runBuiltCli()` swaps `APS_HOME` and calls `runCli` in-process; `runJsonCli()` additionally parses the JSON envelope from stdout on success or stderr on failure. Both accept `--codex-dir` in `args`
+- `runBuiltCli()` points `APS_CODEX_DIR` at a temporary directory whenever the call passes no `--codex-dir`, so a spec that forgets it cannot operate on the real `~/.codex`
 - Use `makeCodexFixture()` for any Codex target; there is no checked-in fixture directory
-- `withClaudeEnv()` is the only safe way to run a Claude command: it verifies `CODEXS_CLAUDE_DIR` resolves inside a temp directory before running anything, because `switch --claude` replaces `settings.json` and would otherwise hit the real `~/.claude`. **Pass `--json` on every Claude spec invocation** — `canPrompt()` is true whenever the suite runs in a terminal, so a missing `--json` blocks on an inquirer prompt and hangs the suite instead of failing it
+- `withClaudeEnv()` is the only safe way to run a Claude command: it verifies `APS_CLAUDE_DIR` resolves inside a temp directory before running anything, because `switch --claude` replaces `settings.json` and would otherwise hit the real `~/.claude`. **Pass `--json` on every Claude spec invocation** — `canPrompt()` is true whenever the suite runs in a terminal, so a missing `--json` blocks on an inquirer prompt and hangs the suite instead of failing it
 - POSIX-only assertions (file modes) must `return` early on `win32`
 
 ## Security

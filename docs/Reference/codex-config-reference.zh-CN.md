@@ -149,11 +149,11 @@ model_reasoning_effort = "high"
 approval_policy = "never"
 ```
 
-对 `codex-switch` 0.1.1 的补充说明：
+对 `agent-provider-switch` 0.1.1 的补充说明：
 
 - 官方 Codex 仍然支持 profiles
-- `codex-switch` 不再把顶层 `profile` 视为推荐的受管 runtime selector
-- 在 `codex-switch` 里，legacy `profile` 和 `[profiles.*]` 主要用于 `migrate`、`doctor` 和 `config` 检视的 adopt / inspect 场景
+- `agent-provider-switch` 不再把顶层 `profile` 视为推荐的受管 runtime selector
+- 在 `agent-provider-switch` 里，legacy `profile` 和 `[profiles.*]` 主要用于 `migrate`、`doctor` 和 `config` 检视的 adopt / inspect 场景
 
 ## 4. `config.toml` 主题整理
 
@@ -237,9 +237,9 @@ Bedrock 相关 key：
 - `model_providers.amazon-bedrock.aws.profile`
 - `model_providers.amazon-bedrock.aws.region`
 
-#### `codex-switch` 0.1.1 的受管投影
+#### `agent-provider-switch` 0.1.1 的受管投影
 
-当 `codex-switch` 为 Codex `0.134.0+` 管理一个 direct OpenAI-compatible route 时，它会有意把运行态投影限制在一组更窄的字段上：
+当 `agent-provider-switch` 为 Codex `0.134.0+` 管理一个 direct OpenAI-compatible route 时，它会有意把运行态投影限制在一组更窄的字段上：
 
 - 顶层 `model` 是活动模型选择器
 - 顶层 `model_provider` 是活动路由选择器
@@ -251,7 +251,7 @@ Bedrock 相关 key：
 
 认证信息会通过 `auth.json` 里的 `OPENAI_API_KEY` 投影，而不是通过运行态 `config.toml` 中的 `env_key`。
 
-这属于 `codex-switch` 的产品约束，不是 Codex 官方能力限制。如果你是手工维护或独立维护 Codex config，`env_key` 仍然是官方支持的方式。
+这属于 `agent-provider-switch` 的产品约束，不是 Codex 官方能力限制。如果你是手工维护或独立维护 Codex config，`env_key` 仍然是官方支持的方式。
 
 ### 4.3.1 `openai_base_url` 和自定义 provider 的区别
 
@@ -594,7 +594,7 @@ http_headers = { "X-Team" = "platform" }
 
 这段是官方 Codex 风格的自定义 provider 示例。
 
-如果你走的是 `codex-switch` 的受管 direct-provider 投影，运行态会被有意收窄为：
+如果你走的是 `agent-provider-switch` 的受管 direct-provider 投影，运行态会被有意收窄为：
 
 ```toml
 model = "gpt-5.4"

@@ -8,8 +8,8 @@
 
 - `README.md`, `README.CN.md`, and `README.AI.md` describe the user-facing product.
 - `docs/cli-usage.md` is the command reference.
-- `docs/codex-switch-product-overview.md` is the product-level summary.
-- `docs/codex-switch-technical-architecture.md` is the implementation map.
+- `docs/agent-provider-switch-product-overview.md` is the product-level summary.
+- `docs/agent-provider-switch-technical-architecture.md` is the implementation map.
 - `docs/PRD/` contains active version fact sources for `0.1.0`, `0.1.1`, and planned `0.1.2`.
 - `docs/Design/` contains matching design fact sources.
 - `docs/Reference/` keeps Codex configuration references.

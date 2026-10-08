@@ -1,16 +1,16 @@
-# codex-switch Product Overview
+# agent-provider-switch Product Overview
 
 Current version: `0.2.1`
 
 Current fact sources:
 
-- [`PRD/codex-switch-prd-v0.2.1.md`](./PRD/codex-switch-prd-v0.2.1.md)
-- [`Design/codex-switch-v0.2.1-design.md`](./Design/codex-switch-v0.2.1-design.md)
+- [`PRD/agent-provider-switch-prd-v0.2.1.md`](./PRD/agent-provider-switch-prd-v0.2.1.md)
+- [`Design/agent-provider-switch-v0.2.1-design.md`](./Design/agent-provider-switch-v0.2.1-design.md)
 - [`cli-usage.md`](./cli-usage.md)
 
 ## Product
 
-`codex-switch` is a local-first provider/model-provider management CLI for Codex. It is for users who switch between OpenAI-compatible provider endpoints and want the switch to be explicit, backed up, and inspectable.
+`agent-provider-switch` is a local-first provider/model-provider management CLI for Codex. It is for users who switch between OpenAI-compatible provider endpoints and want the switch to be explicit, backed up, and inspectable.
 
 The product owns three jobs:
 
@@ -21,11 +21,11 @@ The product owns three jobs:
 ## Current Workflow
 
 ```bash
-codexs init
-codexs add <provider> --profile <model-provider-id> --model <model> --api-key <key> --base-url <url>
-codexs switch <provider>
-codexs status
-codexs doctor
+aps init
+aps add <provider> --profile <model-provider-id> --model <model> --api-key <key> --base-url <url>
+aps switch <provider>
+aps status
+aps doctor
 ```
 
 `migrate` is an advanced adopt helper for existing Codex config, not the fresh-install default.
