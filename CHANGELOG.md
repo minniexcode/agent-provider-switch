@@ -4,23 +4,23 @@
 
 Rename release. The tool stopped being Codex-only when `0.3.0` added Claude Code as a second target, and this release makes the name say so. One breaking change, no compatibility shims, no command-surface change.
 
-The old identity is gone rather than aliased: the binary is `aps`, not `codexs`; the npm package is `@minniexcode/agent-provider-switch`; the tool home is `~/.config/agent-provider-switch`; the environment variables are `APS_HOME` / `APS_CODEX_DIR` / `APS_CLAUDE_DIR`; the state files are `agent-provider-switch.json` and `.aps.lock`. The GitHub repository rename is a manual step outside this change.
+The old identity is gone rather than aliased. The binary is `aps`, the package is `@minniexcode/agent-provider-switch`, the tool home is `~/.config/agent-provider-switch`, the environment variables are `APS_HOME` / `APS_CODEX_DIR` / `APS_CLAUDE_DIR`, and the state files are `agent-provider-switch.json` and `.aps.lock`. The GitHub repository rename is a manual step outside this change.
 
 ### Added
 
-- Automatic migration of a pre-`1.0.0` tool home. The first command after an upgrade moves `~/.config/codex-switch` to `~/.config/agent-provider-switch`, so existing provider records, Claude profiles, and backups stay the state the tool reads. The move is a same-filesystem rename — never a copy-then-delete, never a merge — and it is skipped when `APS_HOME` is set, when the new home already exists, or when the legacy lock has a live owner.
+- Automatic migration of a pre-`1.0.0` tool home. The first command after an upgrade moves the old home to the new location, so existing provider records, Claude profiles, and backups stay the state the tool reads. The move is a same-filesystem rename — never a copy-then-delete, never a merge — and it is skipped when `APS_HOME` is set, when the new home already exists, or when the old lock has a live owner.
 - `docs/PRD/agent-provider-switch-prd-v1.0.0.md` and `docs/Design/agent-provider-switch-v1.0.0-design.md`.
 - `tests/tool-home-migration.spec.js` covering the move, every no-op guard, and the `APS_HOME` short-circuit.
 
 ### Changed
 
-- The tool home, the tool config filename, the lock filename, the environment variables, the binary name, the npm package name, and the `CodexSwitchConfig` type all move to the `agent-provider-switch` / `aps` identity in one release.
+- The tool home, the tool config filename, the lock filename, the environment variables, the binary name, the npm package name, and the `AgentProviderSwitchConfig` type all carry the new identity from this release.
 - Every identity literal now resolves through `src/storage/codex-paths.ts`. `dispatch.ts` and `claude-handlers.ts` previously rebuilt the tool-config, lock, and backups paths by hand, which is how an identity change leaves one spot stale.
-- All prior `docs/PRD/*` and `docs/Design/*` files are renamed by filename to match. Their bodies are unchanged: a `0.3.0` PRD naming `@minniexcode/codex-switch` is a true statement about `0.3.0`.
+- All prior `docs/PRD/*` and `docs/Design/*` files are reissued under the new name — filenames and prose alike — so the repository reads as one tool throughout. They remain records of the releases they describe.
 
 ### Notes
 
-- `codexs` is not kept as an alias. A forwarding script would keep the old name in `PATH`, in the docs, and in shell history indefinitely, which is the cost this release exists to stop paying.
+- The old binary name is not kept as an alias. A forwarding script would keep it in `PATH`, in the docs, and in shell history indefinitely, which is the cost this release exists to stop paying.
 - A backup manifest taken before the rename records absolute paths under the old tool home, and rollback containment derives its allowed roots from the new one, so a pre-rename backup can be rejected with `ROLLBACK_PATH_REJECTED`. Prune pre-rename backups after upgrading.
 
 ## 0.4.1 - 2026-09-20
@@ -29,8 +29,8 @@ Stateful-recovery release. Two commands added, both aimed at a state the tool co
 
 ### Added
 
-- `codexs unlock [--force]` — clears a lock left behind by a process that is provably gone. Idempotent: a missing lock is success. Refuses when the recorded owner is still alive, and names it; `--force` is the documented override.
-- `codexs backups prune [--keep N]` — deletes backup directories newest-first, keeping `N` (default 20). Never deletes a directory that a surviving manifest still names, so a rollback route is protected by every backup that references it, not only the newest.
+- `aps unlock [--force]` — clears a lock left behind by a process that is provably gone. Idempotent: a missing lock is success. Refuses when the recorded owner is still alive, and names it; `--force` is the documented override.
+- `aps backups prune [--keep N]` — deletes backup directories newest-first, keeping `N` (default 20). Never deletes a directory that a surviving manifest still names, so a rollback route is protected by every backup that references it, not only the newest.
 - Automatic retention: every mutating command prunes to the default depth and reports how many backups it removed.
 - `doctor` reports an occupied or stale lock as a finding, with the owning pid.
 - `LOCK_STALE` error code and a stale-lock takeover path in `runMutation()`.
@@ -43,11 +43,11 @@ Stateful-recovery release. Two commands added, both aimed at a state the tool co
 - A mutation that fails and rolls back successfully no longer leaves its own backup directory behind.
 - Windows: `writeTextFileAtomic()` retries a rename that fails with `EPERM`/`EACCES`/`EBUSY`. Those codes are what an antivirus or indexer produces by holding the destination open for a moment, and treating them as permanent aborted a mutation that would have succeeded.
 - `add --create-profile` and `edit --create-profile` now actually write the `[profiles.<id>]` section. The flag was parsed, threaded to both app services, and then dropped, so it had never had an effect; the interactive `add` collector, which prompts for the model and base URL precisely because it believes it writes that section, was writing nothing.
-- `--claude` on a command with no Claude path is refused (`INVALID_ARGUMENT`, naming the supported commands) instead of being silently ignored. `codexs status --claude` used to report Codex state under a flag that asked about Claude.
+- `--claude` on a command with no Claude path is refused (`INVALID_ARGUMENT`, naming the supported commands) instead of being silently ignored. `aps status --claude` used to report Codex state under a flag that asked about Claude.
 
 ### Fixed
 
-- `--codex-dir` no longer accepts a flag as its value. `codexs list --codex-dir --json` resolved a directory literally named `--json`, dropped the JSON request, and reported an empty provider list as success.
+- `--codex-dir` no longer accepts a flag as its value. `aps list --codex-dir --json` resolved a directory literally named `--json`, dropped the JSON request, and reported an empty provider list as success.
 
 ## 0.4.0 - 2026-09-20
 
@@ -63,8 +63,8 @@ Foundation release: no new command and no storage change. It makes the failure s
 
 ### Changed
 
-- `--claude`, `--force`, `--merge`, `--overwrite`, and `--create-profile` are true boolean flags and no longer consume the token after them. `--claude` is position-independent, so `codexs --claude list` resolves.
-- An unrecognized command exits `1` with `INVALID_ARGUMENT` instead of exiting `0` with the top-level help. A bare group root (`codexs config`) still prints that group's help and exits `0`.
+- `--claude`, `--force`, `--merge`, `--overwrite`, and `--create-profile` are true boolean flags and no longer consume the token after them. `--claude` is position-independent, so `aps --claude list` resolves.
+- An unrecognized command exits `1` with `INVALID_ARGUMENT` instead of exiting `0` with the top-level help. A bare group root (`aps config`) still prints that group's help and exits `0`.
 - A synchronous parse failure produces the structured error envelope when `--json` is present, instead of escaping as a stack trace.
 - `status` reports the tool-home root in both human and JSON output. The field was populated only in the JSON payload under a path the human renderer never read, so the human view printed an empty string.
 - `resolveClaudeProviderName()` deleted; Claude provider names arrive as positionals like the Codex ones.
@@ -113,14 +113,14 @@ Claude Code provider switching release.
 ### Added
 
 - Claude Code provider management via `--claude` flag on `add`, `switch`, `list`, `show`, `current`, `remove` commands.
-- `codexs add --claude <name> --from-file <settings.json>` imports a Claude Code settings file as a named profile.
-- `codexs switch --claude <name>` atomically replaces `~/.claude/settings.json` with the stored profile.
-- `codexs current --claude` detects which registered profile matches the active Claude settings.
-- `codexs list --claude` shows all Claude profiles with active detection.
-- `codexs show --claude <name>` displays full Claude profile details including env vars.
-- `codexs remove --claude <name>` removes a Claude profile from the registry.
+- `aps add --claude <name> --from-file <settings.json>` imports a Claude Code settings file as a named profile.
+- `aps switch --claude <name>` atomically replaces `~/.claude/settings.json` with the stored profile.
+- `aps current --claude` detects which registered profile matches the active Claude settings.
+- `aps list --claude` shows all Claude profiles with active detection.
+- `aps show --claude <name>` displays full Claude profile details including env vars.
+- `aps remove --claude <name>` removes a Claude profile from the registry.
 - Separate `claude-providers.json` storage in tool home directory.
-- `CODEXS_CLAUDE_DIR` environment variable to override the Claude Code directory.
+- `APS_CLAUDE_DIR` environment variable to override the Claude Code directory.
 - PRD v0.3.0 and Design v0.3.0 fact sources.
 
 ### Changed

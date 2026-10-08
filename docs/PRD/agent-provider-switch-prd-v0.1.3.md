@@ -1,4 +1,4 @@
-# codex-switch v0.1.3 PRD
+# agent-provider-switch v0.1.3 PRD
 
 ## Version
 
@@ -11,7 +11,7 @@
 
 ## Required Outcome
 
-- `codexs login copilot` must no longer fail during `CopilotClient` construction when the managed SDK/runtime is installed.
+- `aps login copilot` must no longer fail during `CopilotClient` construction when the managed SDK/runtime is installed.
 - The SDK integration must explicitly point at the managed Copilot runtime loader instead of relying on implicit package discovery.
 - Existing direct-provider behavior and Copilot bridge behavior remain unchanged outside the constructor compatibility fix.
 

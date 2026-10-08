@@ -1,4 +1,4 @@
-# codex-switch v0.2.0 Design
+# agent-provider-switch v0.2.0 Design
 
 `0.2.0` is a major architecture release that replaces the Copilot SDK-based authentication and runtime model with a direct GitHub device-flow token exchange and HTTP proxy bridge.
 
@@ -22,7 +22,7 @@
 
 - `toolHomeDir` is now explicitly threaded through all functions that read the GitHub token: `switchProvider`, `startBridge`, `getStatus`, `runDoctor`, and the bridge worker spawn.
 - The bridge worker receives the correct `toolHomeDir` (not `runtimeDir`) via `CODEX_SWITCH_TOOL_HOME_DIR`, ensuring the token is found at `<toolHomeDir>/github-token` rather than a nested runtime subdirectory.
-- `readGithubToken(toolHomeDir?)` resolves the home directory in a consistent order: explicit arg, `CODEXS_HOME` env var, then `~/.config/codex-switch`.
+- `readGithubToken(toolHomeDir?)` resolves the home directory in a consistent order: explicit arg, `APS_HOME` env var, then `~/.config/agent-provider-switch`.
 
 ### Provider Runtime Kind
 

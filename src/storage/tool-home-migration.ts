@@ -85,7 +85,7 @@ export function migrateLegacyToolHome(input: {
   // rename is the only step that cannot be retried: once it lands, guard 2 sees the new home and
   // every later run is a no-op. Both file renames are idempotent, so a run interrupted after them
   // is picked up cleanly next time. Renaming the directory first would be a genuine bug — a
-  // failure on the inner files would leave `codex-switch.json` inside a home whose existence
+  // failure on the inner files would leave the config under its old name in a home whose existence
   // permanently satisfies guard 2, and the tool would read the migrated data as a fresh install.
   renameWithin(legacyHomeDir, LEGACY_TOOL_CONFIG_FILENAME, TOOL_CONFIG_FILENAME);
   renameWithin(legacyHomeDir, LEGACY_LOCK_FILENAME, LOCK_FILENAME);

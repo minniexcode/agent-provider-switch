@@ -25,11 +25,11 @@ this document's shape.
 **The literals are not all in one place.** The tool home is built by `createToolHomePaths()`, but two
 call sites rebuilt parts of it by hand: `dispatch.ts` assembled the tool-config path inline, and
 `claude-handlers.ts` assembled the lock path, backups directory, and latest-manifest path inline —
-including the `.codex-switch.lock` literal. That duplication is exactly how an identity rename leaves
+including the lock filename as a literal. That duplication is exactly how an identity rename leaves
 one spot stale, so it is removed *first*, with every value unchanged, as a behaviour-preserving
 commit. Only then does the string actually change.
 
-**One of the old names is on disk, and it holds the user's data.** `~/.config/codex-switch` contains
+**One of the old names is on disk, and it holds the user's data.** The pre-`1.0.0` tool home contains
 `providers.json`, `claude-providers.json`, `backups/`, and possibly a `github-token`. Renaming the
 tool without moving that directory would leave every existing install reading a fresh, empty home —
 a data-loss bug wearing a rename's clothes. So this release carries one piece of genuinely new
@@ -59,7 +59,7 @@ tree are shared between both targets — but cannot build a `CodexPaths`, which 
 without a Codex directory. That is why `claude-handlers.ts` grew its own copies in the first place.
 
 Two things are deliberately *not* folded in: `createClaudePaths`, which owns a different target, and
-the resolver `resolveToolHome()` (formerly `resolveCodexSwitchHome()`), which stays pure.
+the resolver `resolveToolHome()` — renamed in this release, but still pure.
 
 The one shared helper the migration needs but `fs-utils.ts` kept private —
 `renameWithRetryOnWindows()` — is exported so the migration module reuses the same Windows transient-
@@ -72,20 +72,20 @@ regression in the diff.
 
 ## 2. The scope of the replacement
 
-**`codex` alone is not in scope.** Only `codex-switch`, `codexs`, and `CODEXS_` are. A blanket
-`codex` replacement corrupts the Codex integration itself: `--codex-dir`, `~/.codex`,
-`[model_providers.*]`, `src/runtime/codex-cli.ts`, `MIN_SUPPORTED_CODEX_VERSION`. The word matches
-both the tool and one of the two things the tool manages, and the replacement has to know the
-difference.
+**`codex` alone is not in scope.** Only the tool's own name tokens are: the home directory name, the
+state filenames, the env-var prefix, and the bin name. A blanket `codex` replacement corrupts the
+Codex integration itself: `--codex-dir`, `~/.codex`, `[model_providers.*]`,
+`src/runtime/codex-cli.ts`, `MIN_SUPPORTED_CODEX_VERSION`. The word matches both the tool and one of
+the two things the tool manages, and the replacement has to know the difference.
 
-Similarly, `\bcodex-switch\b` is the boundary used for the repo name so that `codex-switcher` — an
-unrelated third-party project cited in the product-research doc — is never touched.
+The repo-name replacement is likewise word-bounded, so `codex-switcher` — an unrelated third-party
+project cited in the product-research doc — is never touched.
 
 ## 3. Legacy tool home migration
 
 `migrateLegacyToolHome({ newHomeDir, legacyHomeDir })` takes both directories as arguments so a test
 can drive it against temp paths; `ensureLegacyToolHomeMigrated()` is the production wiring, deriving
-`~/.config/agent-provider-switch` and `~/.config/codex-switch` from `os.homedir()`.
+both the current and the pre-`1.0.0` tool home from `os.homedir()`.
 
 **One hook, both targets.** It is called once at the top of `executeCommand()` in
 `src/commands/dispatch.ts`. Dispatch is the single funnel: every registry entry is reached through
@@ -113,24 +113,24 @@ The migration runs only when **all** of these hold. Anything else is a silent no
    classifies the record. `dead`, `unreadable`, `malformed`, and `absent` are all residue and move;
    `live` and `foreign` defer.
 
-The live-lock guard exists because a pre-rename `codexs` process that is still running is a
-concurrent writer against this home, and moving the directory out from under it leaves two writers on
-two different files. Unlike the both-homes case, this condition is transient and actionable, so it
-warns: *left the legacy tool home in place; re-run once that operation has finished.*
+The live-lock guard exists because a pre-rename process that is still running is a concurrent writer
+against this home, and moving the directory out from under it leaves two writers on two different
+files. Unlike the both-homes case, this condition is transient and actionable, so it warns: *left the
+legacy tool home in place; re-run once that operation has finished.*
 
 ### Ordering: files first, directory last
 
 ```
-renameWithin(legacyHomeDir, "codex-switch.json",  "agent-provider-switch.json")
-renameWithin(legacyHomeDir, ".codex-switch.lock", ".aps.lock")
+renameWithin(legacyHomeDir, LEGACY_TOOL_CONFIG_FILENAME, TOOL_CONFIG_FILENAME)
+renameWithin(legacyHomeDir, LEGACY_LOCK_FILENAME, LOCK_FILENAME)
 renameWithRetryOnWindows(legacyHomeDir, newHomeDir)
 ```
 
 This ordering is load-bearing, not stylistic. The directory rename is the only step that cannot be
 retried: once it lands, guard 2 sees the new home and every later run is a no-op. Renaming the
-directory *first* would be a genuine bug — a failure on the inner file renames would leave
-`codex-switch.json` inside a home whose existence permanently satisfies guard 2, so no retry would
-ever happen and the tool would read the migrated data as a fresh install. Putting the retryable steps
+directory *first* would be a genuine bug — a failure on the inner file renames would leave the
+config under its old name inside a home whose existence permanently satisfies guard 2, so no retry
+would ever happen and the tool would read the migrated data as a fresh install. Putting the retryable steps
 first means an interrupted run is picked up cleanly next time; both file renames are idempotent
 (`existsSync(from) && !existsSync(to)`).
 
@@ -184,9 +184,9 @@ correct: an informational command should have no side effects.
   the *new* tool home, so restoring a backup taken before the rename can fail
   `ROLLBACK_PATH_REJECTED`. The honest fix, if it bites, is to prune pre-rename backups — not to widen
   the allowlist for paths a manifest chose.
-- **In-flight legacy process.** Guard 4 narrows the window but cannot eliminate it: a `codexs` process
-  that acquires the legacy lock after the guard reads it. On POSIX the rename can succeed out from
-  under it; on Windows it typically fails `EPERM`/`EBUSY` and is retried.
+- **In-flight legacy process.** Guard 4 narrows the window but cannot eliminate it: a pre-rename
+  process that acquires the legacy lock after the guard reads it. On POSIX the rename can succeed out
+  from under it; on Windows it typically fails `EPERM`/`EBUSY` and is retried.
 - **`withCodexLock()` keeps its name.** It guards the lock shared by both targets, so the name is
   already slightly wrong — more so now that the tool is not Codex-specific. Renaming it is a
   mechanical follow-up, not part of this change.
@@ -209,11 +209,11 @@ correct: an informational command should have no side effects.
 ## 6. Acceptance criteria
 
 - `npm run build && npx tsc --noEmit && node tests/run-tests.js` is green.
-- `aps --version` prints `1.0.0`; `aps --help` never mentions `codexs`.
+- `aps --version` prints `1.0.0`; `aps --help` never mentions the old program name.
 - Migration, against temp directories: legacy-only moves (directory *and* both inner files);
   new-only, both-exist, and neither-exist are no-ops; `APS_HOME` set performs no filesystem access to
   a legacy path; a live legacy lock defers.
 - Against the real home, once, after a manual backup: `aps list --json` reports the same providers the
-  old binary did, and `~/.config/codex-switch` no longer exists.
+  old binary did, and the old tool home no longer exists.
 - `aps doctor` on both targets; `aps rollback` against a backup taken *after* the rename.
 - `npm pack --dry-run` lists the same publishable set apart from the rename.

@@ -1,15 +1,15 @@
-# codex-switch v0.4.1 PRD
+# agent-provider-switch v0.4.1 PRD
 
 ## Summary
 
-`0.4.1` is the second of two releases on the `0.3.x → 0.4.x` line of `@minniexcode/codex-switch`. It
+`0.4.1` is the second of two releases on the `0.3.x → 0.4.x` line of `@minniexcode/agent-provider-switch`. It
 carries the two stateful P0 items from Phase 2:
 
 1. A killed process leaves a lock that blocks every future write, permanently.
 2. Backups grow without bound and duplicate secrets; same-second mutations silently overwrite each
    other's backup.
 
-Two commands are added: `codexs unlock [--force]` and `codexs backups prune [--keep N]`.
+Two commands are added: `aps unlock [--force]` and `aps backups prune [--keep N]`.
 
 It ships **after** `0.4.0` deliberately. Both items change a recovery path — one takes over a lock
 another process left behind, the other deletes directories — and both need the deterministic crash
@@ -44,7 +44,7 @@ Source of record for the findings: `docs/agent-provider-switch-2.x-roadmap.md` �
 ## Non-Goals
 
 - **No TTL-based takeover.** A slow `migrate` can exceed any timer. The consequence is stated rather
-  than hidden: a recycled pid is fail-closed, and `codexs unlock --force` is the documented way out.
+  than hidden: a recycled pid is fail-closed, and `aps unlock --force` is the documented way out.
 - **No audit-log subsystem.** The takeover reports through the existing result payload. A new
   on-disk log would carry its own unbounded-growth and redaction problems.
 - **No change to the lock's location or to the one-lock-for-both-targets model.** Codex and Claude
@@ -59,9 +59,9 @@ Source of record for the findings: `docs/agent-provider-switch-2.x-roadmap.md` �
 
 **New:**
 
-- `codexs unlock [--force]` — clears a lock left by a process that no longer exists. Refuses when the
+- `aps unlock [--force]` — clears a lock left by a process that no longer exists. Refuses when the
   recorded owner is still alive unless `--force` is given. Idempotent: no lock present is success.
-- `codexs backups prune [--keep N]` — deletes old backup directories, newest-first, keeping `N`
+- `aps backups prune [--keep N]` — deletes old backup directories, newest-first, keeping `N`
   (default 20). Never deletes a directory a surviving manifest still names.
 
 **Changed:**
@@ -86,14 +86,14 @@ for liveness, and there is no force path — the only recovery is deleting the f
 - A record that cannot be read (a truncated write from a hard kill) is treated as its own state
   rather than as "unknown owner", because that is the most likely residue of the very crash this
   feature exists to recover from.
-- `codexs unlock` is the explicit escape hatch for every remaining case, including a recycled pid
+- `aps unlock` is the explicit escape hatch for every remaining case, including a recycled pid
   that now belongs to an unrelated live process. It reports what it removed and is safe to run when
   no lock exists.
 - `doctor` reports an occupied or stale lock, with the owner and the remedy, so the condition is
   discoverable rather than mysterious.
 
 **Acceptance:** a process that acquires the lock and exits inside the critical section leaves a lock
-that the next mutation takes over automatically. `codexs unlock` clears an occupied lock only with
+that the next mutation takes over automatically. `aps unlock` clears an occupied lock only with
 `--force`, and succeeds when there is nothing to clear.
 
 ## Backup Retention
@@ -102,7 +102,7 @@ The observed machine holds 97 backup directories spanning four months, every one
 plaintext provider keys. Nothing ever deletes one, and two mutations in the same second resolve to
 the same directory name, so the second silently overwrites the first's files and manifest.
 
-- `codexs backups prune [--keep N]` deletes the oldest directories beyond the retention count.
+- `aps backups prune [--keep N]` deletes the oldest directories beyond the retention count.
 - The same retention runs automatically after every successful mutation.
 - **The first automatic run reduces the existing 97 directories to 20.** This is irreversible. It is
   intended — those copies hold plaintext keys and removing them is the point of `P0-2` — but the
@@ -119,7 +119,7 @@ the same directory name, so the second silently overwrites the first's files and
 
 **Acceptance:** after 25 mutations, `backups/` holds 20 directories. Two mutations in the same
 second produce two distinct directories. A `rollback` with no argument still resolves after a prune.
-`codexs backups prune --keep 5` on a directory tree with 3 backups removes nothing and exits 0.
+`aps backups prune --keep 5` on a directory tree with 3 backups removes nothing and exits 0.
 
 ## Release Mechanics
 
@@ -140,9 +140,9 @@ second produce two distinct directories. A `rollback` with no argument still res
 - A lock whose owner is alive is never taken over automatically.
 - `releaseLock()` does not remove a record it does not own.
 - An unreadable lock record is recoverable, not a permanent block.
-- `codexs unlock` clears an occupied lock only with `--force`; it succeeds and is a no-op when no
+- `aps unlock` clears an occupied lock only with `--force`; it succeeds and is a no-op when no
   lock exists.
-- `codexs doctor` reports an occupied or stale lock.
+- `aps doctor` reports an occupied or stale lock.
 
 **Backups**
 

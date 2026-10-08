@@ -1,4 +1,4 @@
-# codex-switch v0.1.2 PRD
+# agent-provider-switch v0.1.2 PRD
 
 ## Status
 

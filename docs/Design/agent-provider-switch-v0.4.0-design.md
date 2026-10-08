@@ -1,4 +1,4 @@
-# codex-switch v0.4.0 Design Document
+# agent-provider-switch v0.4.0 Design Document
 
 **Foundation and CLI contract.** First of two releases on the `0.3.x → 0.4.x` line. No architecture
 change: both registries, the projection model, the command set, and the `0.3.1` security contracts are
@@ -85,7 +85,7 @@ teardown that deletes directories under the test's feet.
 ### The new Claude spec carries a data-loss hazard
 
 `claudeSwitchProvider` atomically replaces `<claudeDir>/settings.json`, and `<claudeDir>` resolves
-from `CODEXS_CLAUDE_DIR` or the real `~/.claude`. The existing secret-handling spec sets that
+from `APS_CLAUDE_DIR` or the real `~/.claude`. The existing secret-handling spec sets that
 variable; **the new spec must set it too, and assert it up front** — otherwise `npm test` rewrites
 the developer's real Claude settings file.
 
@@ -93,7 +93,7 @@ This is the most dangerous line in the release, and it is a test-harness propert
 product defect. The assertion is not defensive style; without it, running the suite damages the
 machine it runs on.
 
-Related: `CODEXS_CLAUDE_DIR` is load-bearing and undocumented — top-level help lists only the
+Related: `APS_CLAUDE_DIR` is load-bearing and undocumented — top-level help lists only the
 tool-home and Codex-directory variables. It is documented as supported.
 
 ### The workflow
@@ -126,7 +126,7 @@ token. A flag with no following token, or one followed by another `--` token, is
 `["true"]`. There is no notion of a boolean flag anywhere in the registry — the `usage` strings are
 documentation, not schema.
 
-`codexs remove --force packycode` therefore leaves no provider name. `resolveClaudeProviderName()`
+`aps remove --force packycode` therefore leaves no provider name. `resolveClaudeProviderName()`
 exists to dig a provider name back out of the `--claude` flag value, and its own comment says so.
 
 ### Where the fix has to go
@@ -179,11 +179,11 @@ belongs in the document so the next person adding a global flag knows what they 
 deletable once names land as positionals.
 
 **The roadmap's compatibility claim is not true today.** It states that `copilot` already lands as a
-positional in `codexs add --claude copilot --from-file x`. It does not — today that input yields
+positional in `aps add --claude copilot --from-file x`. It does not — today that input yields
 `positionals: []` with `--claude: ["copilot"]`. The claim describes the post-fix state. The four call
 sites are `add`, `switch`, `show`, and `remove` in `handleClaudeCommand`; `list` and `current` take no
 name. Each is re-verified against the new parser rather than assumed, and the acceptance test covers
-all three orderings — including `codexs remove --claude --force <name>`, which does not work at all
+all three orderings — including `aps remove --claude --force <name>`, which does not work at all
 today.
 
 ### `getSingleOption()`
@@ -192,7 +192,7 @@ The `required` parameter is dead: both branches of its ternary return `null`, so
 never enforces anything. It is **deleted**, not made to throw.
 
 Making it throw is the intuitive fix and the wrong one: `handlers.ts` relies on receiving `null`
-there in order to fall through to the interactive collector, and `codexs add` with no flags is a
+there in order to fall through to the interactive collector, and `aps add` with no flags is a
 documented usage form in the registry. A throw would break the primary interactive path to enforce
 something already enforced further down. The parameter and the ternary go, the third argument is
 dropped at all fifteen call sites, and presence enforcement stays where it already lives.
@@ -214,9 +214,9 @@ built parser — all eight of these produce an **identical** `ParsedCommand`:
 ```
 
 `startIndex` falls back to `Math.min(remaining.length, 1)` when nothing resolved, so index 0 is
-skipped and the token there is recorded nowhere. `codexs --help` prints help only because it lands in
+skipped and the token there is recorded nowhere. `aps --help` prints help only because it lands in
 the unknown-command branch — the same branch a typo lands in. **Naively changing that branch to exit
-1 makes `codexs --help` exit 1.**
+1 makes `aps --help` exit 1.**
 
 ### The fix belongs in the parser
 
@@ -233,7 +233,7 @@ for the same fact.
 | Bucket | Behaviour |
 |---|---|
 | No tokens at all | top-level help, exit 0 |
-| A recognized command-group root with no subcommand (`codexs config`) | that group's help, exit 0 |
+| A recognized command-group root with no subcommand (`aps config`) | that group's help, exit 0 |
 | Anything else unresolvable | `INVALID_ARGUMENT`, exit 1 |
 
 Bucket 2 needs the **help-topic** predicate, not the command-name one. `isKnownCommandName()` and
@@ -247,27 +247,27 @@ joined tokens, so bare `config` is absent from it while it *is* a help topic. Th
 
 | Input | Today | `0.4.0` |
 |---|---|---|
-| `codexs` / `codexs --json` | help, 0 | help, 0 |
-| `codexs --help` / `codexs -h` | help, 0 *(by accident)* | help, **0 by design** |
-| `codexs lst` | help, 0 | `INVALID_ARGUMENT`, 1 |
-| `codexs version` | help, 0 | `INVALID_ARGUMENT`, 1 |
-| `codexs config` | top-level help, 0 | group help, 0 (bucket 2) |
-| `codexs --claude list` | top-level help, 0 | normal invocation, once §2 lands |
-| `codexs --help list` | top-level help, 0; `list` ignored | help wins, topic ignored |
-| `codexs --json --help` | plain-text help | unchanged — pre-existing, recorded not fixed |
+| `aps` / `aps --json` | help, 0 | help, 0 |
+| `aps --help` / `aps -h` | help, 0 *(by accident)* | help, **0 by design** |
+| `aps lst` | help, 0 | `INVALID_ARGUMENT`, 1 |
+| `aps version` | help, 0 | `INVALID_ARGUMENT`, 1 |
+| `aps config` | top-level help, 0 | group help, 0 (bucket 2) |
+| `aps --claude list` | top-level help, 0 | normal invocation, once §2 lands |
+| `aps --help list` | top-level help, 0; `list` ignored | help wins, topic ignored |
+| `aps --json --help` | plain-text help | unchanged — pre-existing, recorded not fixed |
 
-`codexs version` is called out because `findCommandDefinition()` special-cases `"help"` and
+`aps version` is called out because `findCommandDefinition()` special-cases `"help"` and
 `"version"` and returns `null` for both, which makes `version` look recognized when it is not a
 command id. It lands in bucket 3 with every other typo.
 
 ### The synchronous envelope needs `--json` from raw argv
 
 Wrapping `main()`'s synchronous section is not sufficient. When `parseArgs()` throws there is no
-parsed result, so the catch cannot know whether `--json` was requested — and `codexs --json
+parsed result, so the catch cannot know whether `--json` was requested — and `aps --json
 --codex-dir` would print a plain-text error, breaking the exact contract the change exists to fix.
 `--json` is read from the raw `argv` for that path.
 
-The likeliest real instance today is `codexs list --codex-dir --json`: `--codex-dir` consumes
+The likeliest real instance today is `aps list --codex-dir --json`: `--codex-dir` consumes
 `--json` as its value, so the resolved directory is a path literally named `--json` and the eventual
 error is plain text. That `--codex-dir` takes its next token unconditionally is recorded, not fixed —
 a `--` guard there is a different change with its own compatibility question.
@@ -287,7 +287,7 @@ gains a parameter for it; its only caller already has the tool-home path in hand
 
 `--version`/`-v` is matched by a whole-array scan. `--help`/`-h` is matched only at indices the
 option loop actually visits, so a valued option can swallow it. The bucket table above is written as
-though help is reliably detected, and it is not — today `codexs --help` reaches the right outcome by
+though help is reliably detected, and it is not — today `aps --help` reaches the right outcome by
 accident. Making the two symmetric is in scope here, to the extent the exit-code rule depends on it;
 the wider help/flag inconsistency is P2-7.
 
@@ -331,14 +331,14 @@ records, per the convention in `CLAUDE.md`.
 
 Beyond the existing suite:
 
-- **Flag parsing** — all three orderings, including `codexs remove --claude --force <name>` and
-  `codexs --claude list`, which does not resolve at all today.
-- **`getSingleOption`** — `codexs add` with no flags still reaches the interactive path rather than
+- **Flag parsing** — all three orderings, including `aps remove --claude --force <name>` and
+  `aps --claude list`, which does not resolve at all today.
+- **`getSingleOption`** — `aps add` with no flags still reaches the interactive path rather than
   erroring, which is the regression the deletion could cause.
 - **Exit codes** — one spawn-based test for the real process exit, plus the bucket table as cases.
 - **`status`** — asserts a non-empty tool home in both human and JSON output; the field has never
   been populated, so no existing test covers it.
-- **Claude workflow** — add, switch, list, current, show, remove, with `CODEXS_CLAUDE_DIR` asserted
+- **Claude workflow** — add, switch, list, current, show, remove, with `APS_CLAUDE_DIR` asserted
   before anything runs.
 - **Fixture** — the three `provider-workflow` tests pass from generated fixtures, on a tree with no
   `dev-codex/local-sandbox`.
@@ -353,7 +353,7 @@ Filled in when the work landed. Deviations first, then what the machine showed.
 **`--codex-dir` now rejects a flag as its value, which the PRD listed as recorded-but-not-changed.**
 The PRD's non-goal says the fix is "scoped to boolean flags and the command-resolution order it
 depends on", and names `--codex-dir` consuming `--json` as a path as something that stays. It had to
-change instead. Once exit codes became observable, `codexs list --codex-dir --json` resolved a
+change instead. Once exit codes became observable, `aps list --codex-dir --json` resolved a
 directory literally named `--json`, dropped the JSON request, and then **reported an empty provider
 list as success** — exit `0` with a plausible-looking answer. A wrong answer is worse than a
 refusal, and this release is specifically about failures becoming visible, so shipping a
@@ -363,7 +363,7 @@ still be written with a `./` prefix. `--version` matching anywhere in `argv` is 
 PRD says.
 
 **A refusal for `--claude` on commands with no Claude path is new behaviour, not in this design.**
-`--claude` is global, so the parser accepts it anywhere. Ignoring it made `codexs status --claude`
+`--claude` is global, so the parser accepts it anywhere. Ignoring it made `aps status --claude`
 report Codex state under a flag that asked about Claude, and nothing in the output said so. The
 rejection is `INVALID_ARGUMENT` and carries `supportedCommands`, so the error names the six commands
 that do have a Claude path. It is placed after the `isClaudeCommand` early return, so the Claude
@@ -371,7 +371,7 @@ commands themselves are untouched.
 
 **`getSingleOption()`'s `required` parameter was deleted as designed, but the third argument had to
 be dropped at every call site rather than made to throw.** As the design predicted, `handlers.ts`
-depends on receiving `null` to fall through to the interactive collector, and `codexs add` with no
+depends on receiving `null` to fall through to the interactive collector, and `aps add` with no
 flags is a documented usage form. No call site relied on the old parameter.
 
 **`tests/cli-process.spec.js` was added to the in-process suite, which this design does not mention.**
@@ -389,9 +389,9 @@ inert at HEAD as well — the flag appeared in `handlers.ts` and both app files 
 `registry.ts`. The interactive `add` collector was the worse half: it prompts for a model and a base
 URL precisely *because* it believes it is writing that section, and it was writing nothing at all.
 Both `add` and `edit` now pass `upsertProfiles`, and `edit`'s guard counts `--create-profile` as an
-action in its own right so `codexs edit p --create-profile` is not refused as an empty update.
+action in its own right so `aps edit p --create-profile` is not refused as an empty update.
 
-**`migrate` is the one command that ignores `CODEXS_CODEX_DIR`.** `codexDirExplicit` is set only by a
+**`migrate` is the one command that ignores `APS_CODEX_DIR`.** `codexDirExplicit` is set only by a
 literal `--codex-dir`, so a spec that sets the environment variable and calls `migrate` resolves
 candidates against its own defaults. This is why the E2E suite's guard is structural — it asserts
 every root inside the sandbox before a child process runs — rather than a convention each spec is

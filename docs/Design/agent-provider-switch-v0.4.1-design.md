@@ -1,4 +1,4 @@
-# codex-switch v0.4.1 Design Document
+# agent-provider-switch v0.4.1 Design Document
 
 **Lock and backup safety.** Second of two releases on the `0.3.x → 0.4.x` line. Two P0 items, both
 stateful, both touching lock discipline. No architecture change: both registries, the projection
@@ -120,22 +120,22 @@ unrecoverable without help, so:
 
 - the record gains `hostname`, because a `~/.config` synced by OneDrive or a dotfiles repository
   would otherwise name a foreign machine's pid that resolves as alive locally;
-- the `LOCK_CONFLICT` message names the recycled-pid possibility and `codexs unlock --force`
+- the `LOCK_CONFLICT` message names the recycled-pid possibility and `aps unlock --force`
   explicitly, since that is the only way out.
 
 `hostname` sharpens the first of those into a state of its own. A record whose `hostname` differs
 from `os.hostname()` is **foreign**: its pid cannot be probed here at all, so it is neither taken
 over automatically nor trusted as alive. It is refused with `LOCK_CONFLICT` naming the foreign host
-and pointing at `codexs unlock --force`. A record with **no** `hostname` predates the field and is
+and pointing at `aps unlock --force`. A record with **no** `hostname` predates the field and is
 treated as local, which is what keeps existing lock files recoverable.
 
 This is the fail-closed reading, and it is deliberate rather than incidental. A tool home shared
-between machines therefore costs one explicit `codexs unlock --force` instead of an automatic
+between machines therefore costs one explicit `aps unlock --force` instead of an automatic
 takeover racing a genuine write on the other machine — the same trade the recycled pid makes, and
-the same escape hatch. `codexs doctor` reports the state as `LOCK_OCCUPIED` so it is discoverable
+the same escape hatch. `aps doctor` reports the state as `LOCK_OCCUPIED` so it is discoverable
 before a write fails on it.
 
-### `codexs unlock`
+### `aps unlock`
 
 A new command, in the `recovery` group beside `backups list`. It removes the lock record and reports
 what it removed — pid, operation, age.
@@ -206,7 +206,7 @@ surviving manifest is barely more work and removes the anomaly class entirely.
 Prune enumerates `backups/*` itself rather than reusing `listBackups()`, for two reasons:
 
 - `listBackups()` throws `BACKUP_NOT_FOUND` when the directory is absent or holds no valid manifest,
-  so `codexs backups prune` on a clean machine would exit 1 for having nothing to do.
+  so `aps backups prune` on a clean machine would exit 1 for having nothing to do.
 - It **skips** directories whose manifest is missing or invalid. Those are exactly the entries a
   crash produces, and skipping them would leave the unbounded-growth bug in place for the one case
   that matters most.
@@ -230,7 +230,7 @@ every manual test of the command would pass.
 So:
 
 - a **lock-free core** that performs the enumeration, protection check, ordering, and deletion;
-- a **locking command wrapper** for `codexs backups prune`, which must hold the lock — otherwise a
+- a **locking command wrapper** for `aps backups prune`, which must hold the lock — otherwise a
   manual prune in one terminal can delete another terminal's in-flight backup, whose rollback then
   fails on a missing backup file after a partial restore;
 - the **automatic call** invokes the core directly, already inside the mutation's lock.
@@ -261,7 +261,7 @@ the only evidence on that assumption is a judgement call, not a given.
 
 ### `--keep` validation
 
-`--keep` is a valued option, so a bare `codexs backups prune --keep` parses as `["--keep",
+`--keep` is a valued option, so a bare `aps backups prune --keep` parses as `["--keep",
 ["true"]]`. `parseInt("true")` must be rejected — along with `0`, negatives, and non-integers — as
 `INVALID_ARGUMENT`. `--keep 0` in particular must never be allowed to approach the protected set.
 
@@ -270,7 +270,7 @@ is not in the boolean set, so it keeps the greedy behaviour.
 
 ### Documented strings that go stale
 
-The name format change invalidates the `codexs rollback 20260511-221457-switch` example in the
+The name format change invalidates the `aps rollback 20260511-221457-switch` example in the
 command registry and the same example in `README.md`. Both are release-time edits.
 
 ### The one-time reduction
@@ -285,8 +285,8 @@ requirement that follows is disclosure, not gating.
 
 ## Cross-cutting changes
 
-**Two new commands need a full surface, not just a handler.** `codexs unlock` and
-`codexs backups prune` each require a `CommandId` entry, a `COMMANDS` entry (and `backups prune`
+**Two new commands need a full surface, not just a handler.** `aps unlock` and
+`aps backups prune` each require a `CommandId` entry, a `COMMANDS` entry (and `backups prune`
 must resolve as exactly `["backups", "prune"]`), a renderer case in `output.ts` — without one the
 human view JSON-dumps the payload through the default branch — a nested-help path, and the command
 lists in `docs/Tests/testing.md`, `README.md`, and `docs/cli-usage.md`. This is the bulk of the
@@ -317,7 +317,7 @@ Beyond the existing suite — and all of it depending on `0.4.0`'s harness work:
   `kill` addresses MSYS pids rather than Windows ones.
 - **Ownership on release** — a lock whose record names a different pid is not removed by
   `releaseLock()`.
-- **Live-owner refusal** — `codexs unlock` refuses without `--force` when the recorded pid is alive.
+- **Live-owner refusal** — `aps unlock` refuses without `--force` when the recorded pid is alive.
 - **Unreadable record** — a truncated lock file is recoverable, not a permanent block.
 - **Retention** — 25 mutations leave 20 directories; two mutations in one second leave two
   directories; a directory referenced by a surviving manifest is not deleted; no-argument `rollback`
@@ -343,7 +343,7 @@ case would hide exactly what this suite exists to expose, but nothing uses it to
 **The stale-lock takeover reports through `warnings`, as designed, and `doctor` reports the two
 states under separate codes.** `LOCK_STALE` (owner gone, recoverable) and `LOCK_OCCUPIED` (owner
 running) are **issue** codes, not error codes — `unlock`'s refusal is `LOCK_CONFLICT`. Naming them
-apart is what lets the renderer's next step differ: the stale case names `codexs unlock`, the
+apart is what lets the renderer's next step differ: the stale case names `aps unlock`, the
 occupied case warns against `--force` unless nothing is actually running.
 
 **`--keep` needed its own validation rather than reusing a numeric coercion.** Missing value,

@@ -6,7 +6,7 @@ It keeps `agent-provider-switch` tool state separate from the target runtime dir
 
 Current package version: `1.0.0`
 
-`1.0.0` renames the tool. The repository, the npm package, the binary (`aps`), the tool home (`~/.config/agent-provider-switch`), the environment variables (`APS_*`), and the state filenames all move together in one breaking release. An existing `~/.config/codex-switch` is moved to the new location automatically by the first command that runs, so upgrading needs no manual step. `codexs` is gone rather than aliased.
+`1.0.0` renames the tool. The repository, the npm package, the binary (`aps`), the tool home (`~/.config/agent-provider-switch`), the environment variables (`APS_*`), and the state filenames all move together in one breaking release. A tool home left at the pre-`1.0.0` location is moved to the new one automatically by the first command that runs, so upgrading needs no manual step. The old binary name is gone rather than aliased.
 
 `0.4.1` is the stateful-recovery release. It adds `aps unlock [--force]` for a lock whose owner no longer exists, and `aps backups prune [--keep N]` plus automatic retention for a backups directory that previously grew without bound. Same-second mutations no longer overwrite each other's backup, `doctor` reports an occupied or stale lock, and two flags that had never worked now do: `--create-profile` writes the legacy `[profiles.<id>]` section it always claimed to, and `--claude` on a command with no Claude path is refused instead of being ignored.
 

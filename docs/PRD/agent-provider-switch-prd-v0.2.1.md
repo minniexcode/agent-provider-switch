@@ -1,8 +1,8 @@
-# codex-switch v0.2.1 PRD
+# agent-provider-switch v0.2.1 PRD
 
 ## Summary
 
-`0.2.1` is a provider-management-only consolidation release for `@minniexcode/codex-switch`.
+`0.2.1` is a provider-management-only consolidation release for `@minniexcode/agent-provider-switch`.
 
 The product is a local-first CLI that manages Codex provider/model-provider routing state. It stores local provider records, projects Codex `model_provider` definitions, switches the active top-level `model` / `model_provider` route, and provides backups, diagnostics, import/export, and rollback.
 
@@ -47,11 +47,11 @@ Current public commands are:
 ## Primary Workflow
 
 ```bash
-codexs init
-codexs add <provider> --profile <model-provider-id> --model <model> --api-key <key> --base-url <url>
-codexs switch <provider>
-codexs status
-codexs doctor
+aps init
+aps add <provider> --profile <model-provider-id> --model <model> --api-key <key> --base-url <url>
+aps switch <provider>
+aps status
+aps doctor
 ```
 
 ## Non-Goals

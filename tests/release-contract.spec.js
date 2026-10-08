@@ -97,6 +97,45 @@ module.exports = {
       },
     },
     {
+      name: "no file carries the pre-1.0.0 identity outside its deliberate exceptions",
+      run() {
+        // The rename is only complete if a grep for the old name comes back empty. The exceptions
+        // are the places where the old name is data rather than branding: the rename map that
+        // records what changed, the frozen LEGACY_* values the migration matches against whatever
+        // is already on a user's disk, and this file's own negative assertion.
+        const allowed = new Set([
+          "src/storage/codex-paths.ts",
+          "tests/tool-home-migration.spec.js",
+          "tests/release-contract.spec.js",
+          "docs/PRD/agent-provider-switch-prd-v1.0.0.md",
+        ]);
+        const pattern = /codex-switch|codexs|CODEXS_|CodexSwitch/;
+        const skipDirs = new Set(["node_modules", "dist", "tmp", "coverage", "dev-codex"]);
+        const textExtensions = new Set([".ts", ".js", ".cjs", ".mjs", ".json", ".md", ".yml", ".yaml", ".toml"]);
+
+        const offenders = [];
+        const walk = (relativeDir) => {
+          const absoluteDir = path.join(repoRoot, relativeDir);
+          for (const entry of fs.readdirSync(absoluteDir, { withFileTypes: true })) {
+            const relative = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
+            if (entry.isDirectory()) {
+              // Dot-directories include `.git` and any worktree checkout under `.claude/`.
+              if (entry.name.startsWith(".") || skipDirs.has(entry.name)) continue;
+              walk(relative);
+              continue;
+            }
+            if (!textExtensions.has(path.extname(entry.name)) || allowed.has(relative)) continue;
+            // `codex-switcher` is an unrelated third-party project cited in the product-research
+            // doc, not this tool under an old name.
+            if (pattern.test(read(relative).replace(/codex-switcher/g, ""))) offenders.push(relative);
+          }
+        };
+        walk("");
+
+        assert.deepEqual(offenders, [], `the pre-1.0.0 identity survives in: ${offenders.join(", ")}`);
+      },
+    },
+    {
       name: "version command reports 1.0.0",
       async run() {
         const result = await runBuiltCli(["--version"]);

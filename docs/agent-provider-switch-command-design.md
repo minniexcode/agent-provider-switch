@@ -1,4 +1,4 @@
-# codex-switch 命令设计说明
+# agent-provider-switch 命令设计说明
 
 > 状态说明：这份文档是历史跨版本参考，不是当前 release contract。
 > 当前事实源请改看 [`docs/cli-usage.md`](./cli-usage.md)、[`docs/PRD/agent-provider-switch-prd-v0.2.1.md`](./PRD/agent-provider-switch-prd-v0.2.1.md)、[`docs/Design/agent-provider-switch-v0.2.1-design.md`](./Design/agent-provider-switch-v0.2.1-design.md)。
@@ -6,14 +6,14 @@
 ## 文档信息
 
 - 文档类型：命令设计文档
-- 适用范围：`codex-switch` MVP
+- 适用范围：`agent-provider-switch` MVP
 - 关联文档：
   - [`PRD/agent-provider-switch-prd-v0.1.0.md`](./PRD/agent-provider-switch-prd-v0.1.0.md)
   - [`agent-provider-switch-technical-architecture.md`](./agent-provider-switch-technical-architecture.md)
 
 ## 1. 文档目标
 
-这份文档把 `codex-switch` 的每个 CLI 命令拆开描述，重点沉淀下面这些内容：
+这份文档把 `agent-provider-switch` 的每个 CLI 命令拆开描述，重点沉淀下面这些内容：
 
 - 命令用途
 - 输入参数
@@ -28,7 +28,7 @@
 
 为了帮助后续继续演进，这里先明确三者的命令/交互边界：
 
-- `codex-switch`
+- `agent-provider-switch`
   - 目标是稳定 CLI 命令
   - 聚焦 provider/profile 切换、导入导出、诊断、回滚
 - `codex-auth`
@@ -38,7 +38,7 @@
   - 更偏 GUI / 桌面管理器
   - 即使内部也有切换逻辑，用户主入口不是命令行，而是桌面界面
 
-这意味着 `codex-switch` 的命令设计原则应继续保持：
+这意味着 `agent-provider-switch` 的命令设计原则应继续保持：
 
 - 参数显式
 - 输出稳定
@@ -52,7 +52,7 @@
 统一命令名：
 
 ```bash
-codexs
+aps
 ```
 
 ### 2.2 公共参数
@@ -120,21 +120,21 @@ codexs
 ## 3. 命令清单概览
 
 ```bash
-codexs list
-codexs current
-codexs switch <provider>
-codexs status
-codexs import <file>
-codexs export <file>
-codexs add <provider>
-codexs remove <provider>
-codexs doctor
-codexs rollback
+aps list
+aps current
+aps switch <provider>
+aps status
+aps import <file>
+aps export <file>
+aps add <provider>
+aps remove <provider>
+aps doctor
+aps rollback
 ```
 
 ## 4. 命令逐项设计
 
-### 4.1 `codexs list`
+### 4.1 `aps list`
 
 #### 目标
 
@@ -143,7 +143,7 @@ codexs rollback
 #### 输入
 
 ```bash
-codexs list [--json] [--codex-dir <path>]
+aps list [--json] [--codex-dir <path>]
 ```
 
 #### 成功输出
@@ -187,7 +187,7 @@ JSON 输出示意：
 - 优先使用 `--json`
 - 不要依赖默认输出格式做机器解析
 
-### 4.2 `codexs current`
+### 4.2 `aps current`
 
 #### 目标
 
@@ -196,7 +196,7 @@ JSON 输出示意：
 #### 输入
 
 ```bash
-codexs current [--json] [--codex-dir <path>]
+aps current [--json] [--codex-dir <path>]
 ```
 
 #### 成功输出
@@ -226,7 +226,7 @@ JSON：
 - `CONFIG_NOT_FOUND`
 - `PROFILE_NOT_FOUND`
 
-### 4.3 `codexs status`
+### 4.3 `aps status`
 
 #### 目标
 
@@ -235,7 +235,7 @@ JSON：
 #### 输入
 
 ```bash
-codexs status [--json] [--codex-dir <path>]
+aps status [--json] [--codex-dir <path>]
 ```
 
 #### 当前返回字段
@@ -273,7 +273,7 @@ JSON 示例：
 - `status` 是概览，不做深度建议
 - 深度问题检测交给 `doctor`
 
-### 4.4 `codexs switch <provider>`
+### 4.4 `aps switch <provider>`
 
 #### 目标
 
@@ -282,7 +282,7 @@ JSON 示例：
 #### 输入
 
 ```bash
-codexs switch <provider> [--no-login] [--json] [--codex-dir <path>]
+aps switch <provider> [--no-login] [--json] [--codex-dir <path>]
 ```
 
 #### 交互行为
@@ -340,7 +340,7 @@ JSON 示例：
 - `--no-login` 仅跳过登录，不跳过备份和 profile 修改
 - 登录失败时当前实现会附带 `rollbackApplied: true`
 
-### 4.5 `codexs import <file>`
+### 4.5 `aps import <file>`
 
 #### 目标
 
@@ -349,7 +349,7 @@ JSON 示例：
 #### 输入
 
 ```bash
-codexs import <file> [--json] [--codex-dir <path>]
+aps import <file> [--json] [--codex-dir <path>]
 ```
 
 #### 行为语义
@@ -381,7 +381,7 @@ codexs import <file> [--json] [--codex-dir <path>]
 - `BACKUP_FAILED`
 - `ROLLBACK_FAILED`
 
-### 4.6 `codexs export <file>`
+### 4.6 `aps export <file>`
 
 #### 目标
 
@@ -390,7 +390,7 @@ codexs import <file> [--json] [--codex-dir <path>]
 #### 输入
 
 ```bash
-codexs export <file> [--force] [--json] [--codex-dir <path>]
+aps export <file> [--force] [--json] [--codex-dir <path>]
 ```
 
 #### 行为语义
@@ -421,7 +421,7 @@ codexs export <file> [--force] [--json] [--codex-dir <path>]
 - `PROVIDERS_NOT_FOUND`
 - `PROVIDERS_PARSE_ERROR`
 
-### 4.7 `codexs add <provider>`
+### 4.7 `aps add <provider>`
 
 #### 目标
 
@@ -430,7 +430,7 @@ codexs export <file> [--force] [--json] [--codex-dir <path>]
 #### 输入
 
 ```bash
-codexs add <provider> \
+aps add <provider> \
   --profile <name> \
   --api-key <key> \
   [--base-url <url>] \
@@ -472,7 +472,7 @@ codexs add <provider> \
 - `BACKUP_FAILED`
 - `ROLLBACK_FAILED`
 
-### 4.8 `codexs remove <provider>`
+### 4.8 `aps remove <provider>`
 
 #### 目标
 
@@ -481,7 +481,7 @@ codexs add <provider> \
 #### 输入
 
 ```bash
-codexs remove <provider> [--force] [--json] [--codex-dir <path>]
+aps remove <provider> [--force] [--json] [--codex-dir <path>]
 ```
 
 #### 行为语义
@@ -499,7 +499,7 @@ codexs remove <provider> [--force] [--json] [--codex-dir <path>]
 - `BACKUP_FAILED`
 - `ROLLBACK_FAILED`
 
-### 4.9 `codexs doctor`
+### 4.9 `aps doctor`
 
 #### 目标
 
@@ -508,7 +508,7 @@ codexs remove <provider> [--force] [--json] [--codex-dir <path>]
 #### 输入
 
 ```bash
-codexs doctor [--json] [--codex-dir <path>]
+aps doctor [--json] [--codex-dir <path>]
 ```
 
 #### 当前诊断项
@@ -546,7 +546,7 @@ codexs doctor [--json] [--codex-dir <path>]
 - 当前实现把 codex CLI 缺失归到 `CODEX_LOGIN_FAILED`
 - 后续可按需要拆分更细错误码
 
-### 4.10 `codexs rollback`
+### 4.10 `aps rollback`
 
 #### 目标
 
@@ -555,7 +555,7 @@ codexs doctor [--json] [--codex-dir <path>]
 #### 输入
 
 ```bash
-codexs rollback [--json] [--codex-dir <path>]
+aps rollback [--json] [--codex-dir <path>]
 ```
 
 #### 行为语义
@@ -630,15 +630,15 @@ JSON 输出也遵循相同策略：
 
 未来候选命令：
 
-- `codexs show <provider>`
-- `codexs edit <provider>`
-- `codexs backups list`
-- `codexs rollback <backup-id>`
-- `codexs import --merge`
+- `aps show <provider>`
+- `aps edit <provider>`
+- `aps backups list`
+- `aps rollback <backup-id>`
+- `aps import --merge`
 
 ## 8. 结论
 
-`codex-switch` 当前命令设计已经具备下面几个工程特征：
+`agent-provider-switch` 当前命令设计已经具备下面几个工程特征：
 
 - 命令面稳定
 - 参数风格统一

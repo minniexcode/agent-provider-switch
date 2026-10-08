@@ -1,4 +1,4 @@
-# codex-switch v0.1.4 Design
+# agent-provider-switch v0.1.4 Design
 
 `0.1.4` is a bridge reliability and observability repair release.
 

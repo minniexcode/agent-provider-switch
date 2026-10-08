@@ -73,7 +73,7 @@ src/storage/            File I/O — read/write repos, path resolution
   codex-paths.ts        ~/.config/agent-provider-switch paths + ~/.codex target
                         (also owns the identity constants and the frozen LEGACY_* names)
   claude-paths.ts       ~/.claude target paths
-  tool-home-migration.ts  Moves a pre-1.0.0 ~/.config/codex-switch home to the new location
+  tool-home-migration.ts  Moves a pre-1.0.0 tool home to its current location
 src/interaction/        Interactive prompts (inquirer-based)
 src/runtime/            Codex CLI detection/probing
 ```
@@ -95,13 +95,13 @@ The CLI manages two independent targets via the same tool-home (`~/.config/agent
 
 `ensureLegacyToolHomeMigrated()` runs once at the top of `executeCommand` — the single funnel every command passes through, so one call site covers both targets, `unlock` included. It runs *before* the tool-home paths are built, because those resolve to the new home.
 
-It moves `~/.config/codex-switch` → `~/.config/agent-provider-switch` only when **all** of these hold: `APS_HOME` is unset (checked before any filesystem call — the one thing standing between a bug here and the developer's real `~/.config`), the new home does not exist, the old one is a directory, and the old lock has no live or foreign owner. Both homes existing is a silent no-op: with no one-shot state marker, a warning there would fire on every command forever.
+It moves the pre-`1.0.0` tool home to the current one only when **all** of these hold: `APS_HOME` is unset (checked before any filesystem call — the one thing standing between a bug here and the developer's real `~/.config`), the new home does not exist, the old one is a directory, and the old lock has no live or foreign owner. Both homes existing is a silent no-op: with no one-shot state marker, a warning there would fire on every command forever.
 
-Inside the legacy home, `codex-switch.json` and `.codex-switch.lock` are renamed *before* the directory is. That ordering is load-bearing. The directory rename is the only irreversible step, so everything retryable has to precede it; doing it first would leave the old config filename inside a home whose existence permanently satisfies the second guard, and the tool would then read the migrated data as a fresh install with no retry ever possible.
+Inside the legacy home, the tool config and the lock file are renamed to their current names *before* the directory is. That ordering is load-bearing. The directory rename is the only irreversible step, so everything retryable has to precede it; doing it first would leave the old config filename inside a home whose existence permanently satisfies the second guard, and the tool would then read the migrated data as a fresh install with no retry ever possible.
 
 The names it looks for come from the `LEGACY_*` constants in `src/storage/codex-paths.ts`. They are frozen and only ever read — never write to one, and never "update" them to match the current identity. Do not move this migration into `resolveToolHome()`: that is a pure resolver called several times per process, so the migration would run repeatedly, add probes to a hot path, and have no warning channel.
 
-The identity literals live in one place for the same reason. When renaming again, note that bare `codex` is **not** in scope — only `codex-switch` / `codexs` / `CODEXS_`. A blanket `codex` replace corrupts the Codex integration itself: `--codex-dir`, `~/.codex`, `[model_providers.*]`, `src/runtime/codex-cli.ts`, `MIN_SUPPORTED_CODEX_VERSION`.
+The identity literals live in one place for the same reason. When renaming again, note that bare `codex` is **not** in scope — only the tool's own name tokens are, wherever they appear: the home directory name, the state filenames, the env-var prefix, and the bin name. A blanket `codex` replace corrupts the Codex integration itself: `--codex-dir`, `~/.codex`, `[model_providers.*]`, `src/runtime/codex-cli.ts`, `MIN_SUPPORTED_CODEX_VERSION`.
 
 ### Secret Handling
 

@@ -1,4 +1,4 @@
-# codex-switch v0.1.0 PRD
+# agent-provider-switch v0.1.0 PRD
 
 ## Status
 
@@ -8,30 +8,30 @@
 
 ## Product Contract
 
-`codex-switch` is a local-first CLI named `codexs` for managing Codex model-provider routes. It keeps tool-owned provider state separate from the target Codex runtime while projecting the selected provider into Codex-compatible `config.toml` and `auth.json` files.
+`agent-provider-switch` is a local-first CLI named `aps` for managing Codex model-provider routes. It keeps tool-owned provider state separate from the target Codex runtime while projecting the selected provider into Codex-compatible `config.toml` and `auth.json` files.
 
 Stable user workflows:
 
 ```bash
-codexs init
-codexs add <provider> --profile <model-provider-id> --api-key <key> --base-url <url> --model <model>
-codexs switch <provider>
-codexs status
-codexs doctor
+aps init
+aps add <provider> --profile <model-provider-id> --api-key <key> --base-url <url> --model <model>
+aps switch <provider>
+aps status
+aps doctor
 ```
 
 ```bash
-codexs init
-codexs login copilot
-codexs add <provider> --copilot --profile <model-provider-id> --model <model>
-codexs switch <provider>
-codexs status
-codexs doctor
+aps init
+aps login copilot
+aps add <provider> --copilot --profile <model-provider-id> --model <model>
+aps switch <provider>
+aps status
+aps doctor
 ```
 
 ## Stable Boundaries
 
-- Tool home owns `codex-switch.json`, `providers.json`, `backups/`, `runtime/`, and `runtimes/`.
+- Tool home owns `agent-provider-switch.json`, `providers.json`, `backups/`, `runtime/`, and `runtimes/`.
 - Target Codex home owns the active `config.toml` and `auth.json` projection.
 - `providers.json` is the provider registry source of truth.
 - `config.toml` uses top-level `model` / `model_provider` plus `[model_providers.*]` sections.

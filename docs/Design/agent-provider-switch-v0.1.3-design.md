@@ -1,4 +1,4 @@
-# codex-switch v0.1.3 Design
+# agent-provider-switch v0.1.3 Design
 
 `0.1.3` is a targeted Copilot login compatibility repair release.
 

@@ -6,18 +6,19 @@
 that line allowed to break the interface, because it is the rename.
 
 The tool began as a Codex-only provider switcher, so its whole identity was built around the word
-`codex`: the repository, the npm package, the binary `codexs`, the tool home
-`~/.config/codex-switch`, the environment variables `CODEXS_*`, and the state filenames. It has
-since grown a second, independent target — Claude Code, via `--claude` and a parallel
-`claude-providers.json` — and the command registry makes a third target a natural next step.
+`codex`: the repository, the npm package, the binary, the tool home, the environment variables, and
+the state filenames. It has since grown a second, independent target — Claude Code, via `--claude`
+and a parallel `claude-providers.json` — and the command registry makes a third target a natural
+next step.
 
 Naming a tool after one of its targets is a bet that keeps losing. This release pays the rename cost
 once, in a single breaking version, so the name stops tracking whichever CLI is supported today.
 
-The rename is complete and unaliased: `codexs` is removed rather than kept as a forwarding shim.
-The one concession to existing installs is that a `~/.config/codex-switch` tool home is moved to the
-new location automatically, because that directory holds the user's provider records, secrets, and
-backups — a rename that stranded them would be data loss, not a rename.
+The rename is complete and unaliased: the old binary name is removed rather than kept as a
+forwarding shim. The one concession to existing installs is that a tool home left at the
+pre-`1.0.0` location is moved to the new one automatically, because that directory holds the user's
+provider records, secrets, and backups — a rename that stranded them would be data loss, not a
+rename.
 
 Design detail: `docs/Design/agent-provider-switch-v1.0.0-design.md`. This release closes no roadmap
 finding; it is the naming change that makes the `2.x` roadmap's target-generalization work
@@ -57,11 +58,12 @@ the meantime, so the order between the two does not matter. Publishing — `npm 
 
 - **One identity, in one place.** Every literal that names the tool resolves through
   `src/storage/codex-paths.ts`, so the next identity change is one edit rather than a hunt.
-- **No silent straddle.** `codexs` is gone, not aliased. A user with the old binary installed gets a
-  clear `command not found`, not two binaries that disagree about which tool home is authoritative.
-- **The existing tool home survives the rename.** `~/.config/codex-switch` is moved to the new
-  location, so `providers.json`, `claude-providers.json`, and `backups/` continue to be the state the
-  tool reads and writes.
+- **No silent straddle.** The old binary name is gone, not aliased. A user with it still installed
+  gets a clear `command not found`, not two binaries that disagree about which tool home is
+  authoritative.
+- **The existing tool home survives the rename.** A home left at the pre-`1.0.0` location is moved to
+  the new one, so `providers.json`, `claude-providers.json`, and `backups/` continue to be the state
+  the tool reads and writes.
 - **The move is never destructive and never a merge.** Move, or do nothing. There is no path in which
   the tool copies-then-deletes, overwrites a new home, or unlinks the legacy directory.
 - **Configuration overrides still win.** A tool home named explicitly by `APS_HOME` is never
@@ -69,7 +71,7 @@ the meantime, so the order between the two does not matter. Publishing — `npm 
 
 ## Non-Goals
 
-- **No `codexs` alias or shim.** A forwarding script would keep the old name in `PATH`, in
+- **No alias or shim for the old binary name.** A forwarding script would keep it in `PATH`, in
   documentation, and in shell history indefinitely, which is the cost this release exists to stop
   paying.
 - **No change to the command surface.** Every command, flag, and JSON envelope field is unchanged.
@@ -80,9 +82,10 @@ the meantime, so the order between the two does not matter. Publishing — `npm 
 - **No merging of two tool homes.** If both the legacy and the new home exist, the tool uses the new
   one and leaves the legacy one alone. It does not warn either — with no one-shot marker the warning
   would repeat on every command, and `doctor` is the right home for that signal if it is ever wanted.
-- **No rewrite of historical release records.** The `docs/PRD/*` and `docs/Design/*` files of prior
-  releases are renamed on disk but their prose is left intact. A `0.3.0` PRD that says
-  `@minniexcode/codex-switch` is a true statement about `0.3.0`.
+- **No preservation of the old name in prior records.** The `docs/PRD/*` and `docs/Design/*` files of
+  prior releases are reissued under the new name — filenames and prose alike — so that no document in
+  the repository reads as a different tool. They remain records of the releases they describe; only
+  the name they were written under changes.
 - **No pre-`1.0.0` backup guarantee.** A backup manifest taken before the rename records absolute
   paths under the old tool home. Rollback containment resolves every restore path inside the roots
   the caller supplies, and those roots are derived from the *new* tool home, so a pre-rename backup
@@ -90,11 +93,10 @@ the meantime, so the order between the two does not matter. Publishing — `npm 
 
 ## Legacy Tool Home Migration
 
-The first command that runs after an upgrade moves `~/.config/codex-switch` to
-`~/.config/agent-provider-switch`, so a user does not have to know the rename happened. It runs at
-the top of the dispatch funnel, which every registered command passes through, so it covers both
-targets — including `unlock`, which reads the lock from the tool home and would otherwise recover the
-wrong one.
+The first command that runs after an upgrade moves the pre-`1.0.0` tool home to the current one, so
+a user does not have to know the rename happened. It runs at the top of the dispatch funnel, which
+every registered command passes through, so it covers both targets — including `unlock`, which reads
+the lock from the tool home and would otherwise recover the wrong one.
 
 The migration runs only when **all** of these hold:
 
@@ -104,16 +106,15 @@ The migration runs only when **all** of these hold:
 4. The legacy lock has no live or foreign owner. A lock whose recorded process is gone — or which is
    absent, unreadable, or malformed — is safe to move.
 
-Anything else is a no-op. Inside the legacy home, `codex-switch.json` becomes
-`agent-provider-switch.json` and `.codex-switch.lock` becomes `.aps.lock` **before** the directory
-itself is renamed. The directory rename is the only irreversible step, so everything retryable
-precedes it: if the rename fails, the legacy home stays intact with the new filenames inside it, and
-the next command retries cleanly.
+Anything else is a no-op. Inside the legacy home, the tool config and the lock file are renamed to
+their current names **before** the directory itself is renamed. The directory rename is the only
+irreversible step, so everything retryable precedes it: if the rename fails, the legacy home stays
+intact with the new filenames inside it, and the next command retries cleanly.
 
 `--help` and `--version` do not migrate, because `src/cli.ts` resolves them before dispatch. An
 informational command should have no side effects.
 
-**Acceptance:** on a machine with only `~/.config/codex-switch`, the first `aps` command leaves the
+**Acceptance:** on a machine with only the pre-`1.0.0` tool home, the first `aps` command leaves the
 providers readable from `~/.config/agent-provider-switch` and the legacy directory absent. With
 `APS_HOME` set, no legacy path is touched at all.
 
@@ -130,16 +131,20 @@ providers readable from `~/.config/agent-provider-switch` and the legacy directo
 - `CHANGELOG.md` entry.
 - Version strings and the new names in `README.md`, `README.CN.md`, `README.AI.md`,
   `docs/cli-usage.md`, and `docs/Tests/testing.md`.
-- All prior release docs renamed by filename, with their bodies left as written.
+- All prior release docs reissued under the new name — filenames and prose alike, so no document in
+  the repository reads as a different tool. The Rename Map above is the only place the old
+  identifiers are written down.
 
 ## Acceptance Criteria
 
 **Identity**
 
-- `aps --version` prints `1.0.0`; `aps --help` shows `aps` and never `codexs`.
-- No live source file, test, or current-state document contains `codexs`, `CODEXS_`, or the old
-  `~/.config/codex-switch` path. The exceptions are the frozen `LEGACY_*` constants, the migration
-  module and its spec, and historical release records.
+- `aps --version` prints `1.0.0`; `aps --help` shows `aps` and never the old program name.
+- No tracked file names the old identity, with exactly three deliberate exceptions: the Rename Map
+  above, the frozen `LEGACY_*` constants that the migration must match against what is already on a
+  user's disk, and the negative-assertion pattern in `tests/release-contract.spec.js`. The unrelated
+  third-party project `codex-switcher` cited in the product-research doc is a different name and is
+  untouched.
 - `npm install -g @minniexcode/agent-provider-switch` puts `aps` on `PATH`.
 
 **Migration**

@@ -1,8 +1,8 @@
-# codex-switch v0.3.0 Design Document
+# agent-provider-switch v0.3.0 Design Document
 
 ## Overview
 
-This document describes the design for adding Claude Code provider switching to codex-switch. The feature allows users to manage multiple Claude Code configurations and switch between them with a single command.
+This document describes the design for adding Claude Code provider switching to agent-provider-switch. The feature allows users to manage multiple Claude Code configurations and switch between them with a single command.
 
 ## Architecture
 
@@ -27,12 +27,12 @@ Storage Layer:   claude-paths.ts, claude-providers-repo.ts
 ### File Layout
 
 ```
-~/.config/codex-switch/
-  codex-switch.json          (tool config, unchanged)
+~/.config/agent-provider-switch/
+  agent-provider-switch.json          (tool config, unchanged)
   providers.json             (Codex providers, unchanged)
   claude-providers.json      (NEW: Claude provider store)
   backups/                   (shared backup directory)
-  .codex-switch.lock         (shared lock file)
+  .agent-provider-switch.lock         (shared lock file)
 
 ~/.claude/
   settings.json              (Claude Code active config, managed by switch)
@@ -43,7 +43,7 @@ Storage Layer:   claude-paths.ts, claude-providers-repo.ts
 ### Add Flow
 
 ```
-codexs add --claude copilot --from-file ~/.claude/settings-copilot.json
+aps add --claude copilot --from-file ~/.claude/settings-copilot.json
   → parseArgs() detects --claude flag
   → isClaudeCommand() returns true
   → handleClaudeCommand() dispatches to claudeAddProvider()
@@ -55,7 +55,7 @@ codexs add --claude copilot --from-file ~/.claude/settings-copilot.json
 ### Switch Flow
 
 ```
-codexs switch --claude copilot
+aps switch --claude copilot
   → parseArgs() detects --claude flag
   → isClaudeCommand() returns true
   → handleClaudeCommand() dispatches to claudeSwitchProvider()
@@ -78,7 +78,7 @@ type ClaudeProviderRecord = {
 type ClaudePaths = {
   claudeDir: string;              // ~/.claude
   claudeSettingsPath: string;     // ~/.claude/settings.json
-  claudeProvidersPath: string;    // ~/.config/codex-switch/claude-providers.json
+  claudeProvidersPath: string;    // ~/.config/agent-provider-switch/claude-providers.json
 };
 ```
 
@@ -98,7 +98,7 @@ If all five match, the profile is considered active. This avoids false mismatche
 
 All write operations reuse the existing `runMutation()` framework:
 
-- **Lock**: Shared `.codex-switch.lock` serializes all operations
+- **Lock**: Shared `.agent-provider-switch.lock` serializes all operations
 - **Backup**: Files are backed up before mutation
 - **Rollback**: On failure, files are restored from backup
 - **Atomicity**: File writes use `writeTextFileAtomic()`
@@ -115,9 +115,9 @@ New error codes for Claude operations:
 
 ## Environment Variable Override
 
-- `CODEXS_CLAUDE_DIR` — override the Claude Code directory (default: `~/.claude`)
+- `APS_CLAUDE_DIR` — override the Claude Code directory (default: `~/.claude`)
 
-This follows the same pattern as `CODEXS_CODEX_DIR` for Codex.
+This follows the same pattern as `APS_CODEX_DIR` for Codex.
 
 ## Files Modified
 

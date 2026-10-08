@@ -1,4 +1,4 @@
-# codex-switch v0.1.0 Design
+# agent-provider-switch v0.1.0 Design
 
 ## Purpose
 

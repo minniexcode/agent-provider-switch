@@ -1,8 +1,8 @@
-# codex-switch v0.4.0 PRD
+# agent-provider-switch v0.4.0 PRD
 
 ## Summary
 
-`0.4.0` is the first of two releases on the `0.3.x → 0.4.x` line of `@minniexcode/codex-switch`. It is
+`0.4.0` is the first of two releases on the `0.3.x → 0.4.x` line of `@minniexcode/agent-provider-switch`. It is
 the **foundation and CLI-contract** release: it adds no command, no storage format, and no recovery
 path. It closes three Phase 2 items:
 
@@ -89,32 +89,32 @@ the file-permission model, rollback containment, and every write path.
 
 ## Boolean Flag Parsing
 
-The parser treats any `--x` followed by a non-`--` token as `--x <value>`, so `codexs remove --force
+The parser treats any `--x` followed by a non-`--` token as `--x <value>`, so `aps remove --force
 packycode` leaves no provider name and falls through to a prompt or an error. The
 `resolveClaudeProviderName()` helper exists only to dig a provider name back out of the `--claude`
 flag value, and its own comment says so.
 
 - The five boolean flags are recognized as booleans wherever they appear, including before the
   command name.
-- `--claude` becomes position-independent. `codexs add --claude copilot --from-file x` yields
-  `copilot` as a positional, and `codexs remove --claude --force <name>` — which does not work today
+- `--claude` becomes position-independent. `aps add --claude copilot --from-file x` yields
+  `copilot` as a positional, and `aps remove --claude --force <name>` — which does not work today
   — works.
 - The parser fix and the deletion of `resolveClaudeProviderName()` ship in one commit; the helper is
   only deletable once names land as positionals.
 - `getSingleOption()`'s `required` parameter, which has never had an effect, is deleted rather than
-  made to throw. `codexs add` with no flags relies on receiving an empty value in order to prompt,
+  made to throw. `aps add` with no flags relies on receiving an empty value in order to prompt,
   and that is the documented interactive form.
 - `--reveal` stays a global flag. It is already stripped before the command-option pass, so listing
   it among the boolean flags would change nothing.
 
-**Acceptance:** `codexs remove --force <name>` and `codexs remove --claude --force <name>` both
+**Acceptance:** `aps remove --force <name>` and `aps remove --claude --force <name>` both
 resolve the provider name for both targets. `resolveClaudeProviderName` no longer exists.
 
 ## Exit Codes and the Error Envelope
 
 - An unrecognized command exits `1` with `INVALID_ARGUMENT` through the standard envelope, in both
   human and `--json` output.
-- `codexs`, `codexs --help`, `codexs -h`, `codexs --version`, and a recognized command group with no
+- `aps`, `aps --help`, `aps -h`, `aps --version`, and a recognized command group with no
   subcommand continue to exit `0`.
 - `main()`'s synchronous section is wrapped so a parse error produces the envelope. Because a thrown
   parse error leaves no parsed options, `--json` is honored for that case too.
@@ -123,8 +123,8 @@ resolve the provider name for both targets. `resolveClaudeProviderName` no longe
 The discriminator between "no command" and "wrong command" does not exist today — the parser discards
 the first token when it resolves nothing — so this goal is a parser change, not a `cli.ts` change.
 
-**Acceptance:** `codexs lst` exits 1 and produces a structured error; `codexs --help` exits 0;
-`codexs --json --codex-dir` exits 1 with a JSON envelope, not a stack trace; `codexs status` prints a
+**Acceptance:** `aps lst` exits 1 and produces a structured error; `aps --help` exits 0;
+`aps --json --codex-dir` exits 1 with a JSON envelope, not a stack trace; `aps status` prints a
 non-empty tool home.
 
 ## CI and Test Portability
@@ -159,17 +159,17 @@ of them:
 
 **Flags**
 
-- `codexs remove --force <name>` and `codexs remove --claude --force <name>` both resolve the name.
-- `codexs add --claude <name> --from-file <path>` resolves the name as a positional.
-- `codexs --claude list` resolves as a normal invocation.
+- `aps remove --force <name>` and `aps remove --claude --force <name>` both resolve the name.
+- `aps add --claude <name> --from-file <path>` resolves the name as a positional.
+- `aps --claude list` resolves as a normal invocation.
 - `resolveClaudeProviderName` no longer exists.
 
 **Exit codes**
 
-- `codexs lst` exits 1 with a structured error.
-- `codexs --help`, `codexs -h`, `codexs --version`, and `codexs` exit 0.
-- `codexs --json --codex-dir` exits 1 with a JSON envelope.
-- `codexs status` prints a non-empty tool home in human and JSON output.
+- `aps lst` exits 1 with a structured error.
+- `aps --help`, `aps -h`, `aps --version`, and `aps` exit 0.
+- `aps --json --codex-dir` exits 1 with a JSON envelope.
+- `aps status` prints a non-empty tool home in human and JSON output.
 
 **Build and test**
 

@@ -1,17 +1,17 @@
-# codex-switch 产品研究与 PRD 输入稿
+# agent-provider-switch 产品研究与 PRD 输入稿
 
 ## 背景与当前结论
 
-这份文档的定位不是正式 PRD，而是 `codex-switch` 的前置分析稿。它用于整合当前对参考项目、产品边界和技术方向的判断，并为后续单独编写 `PRD/agent-provider-switch-prd-v0.1.0.md` 提供输入。
+这份文档的定位不是正式 PRD，而是 `agent-provider-switch` 的前置分析稿。它用于整合当前对参考项目、产品边界和技术方向的判断，并为后续单独编写 `PRD/agent-provider-switch-prd-v0.1.0.md` 提供输入。
 
 当前已经相对明确、可以先锁定的基础结论如下：
 
-- 产品展示名使用 `codex-switch`
-- CLI 命令名使用 `codexs`
+- 产品展示名使用 `agent-provider-switch`
+- CLI 命令名使用 `aps`
 - 第一阶段做 CLI，不做 GUI
 - 技术路线优先 TypeScript / Node.js
 
-为什么需要 `codex-switch`：
+为什么需要 `agent-provider-switch`：
 
 - 现有方案里，有的过重
   - 偏 GUI、偏完整账号体系、偏桌面应用或代理接管，不适合只想快速管理本地 Codex provider/profile 的场景
@@ -25,7 +25,7 @@
 - 在失败时回滚 `config.toml`
 - 以 `providers.json` 维护 provider 到 profile / key 的映射
 
-这说明 `codex-switch` 的第一阶段并不需要先做成重型系统。它更像一个“可分发、可维护、对 AI 友好、默认安全”的本地配置管理 CLI。
+这说明 `agent-provider-switch` 的第一阶段并不需要先做成重型系统。它更像一个“可分发、可维护、对 AI 友好、默认安全”的本地配置管理 CLI。
 
 ## 参考项目一：codex-auth
 
@@ -104,17 +104,17 @@ README 还明确写到 npm 包支持 Linux、macOS、Windows 的 x64 / arm64 组
 - 主要命令围绕 `login`、`switch account`、`import auth`、`export auth`、usage refresh 展开
 - README 明确提到它面向 Codex CLI、VS Code extension、Codex App，而不只是本地 `config.toml` / `providers.json` 模型
 
-所以它与 `codex-switch` 的关系是“产品形态相近，但核心对象不同”：
+所以它与 `agent-provider-switch` 的关系是“产品形态相近，但核心对象不同”：
 
 - 相近点：都是 CLI-first，都强调可安装、可切换、可管理
-- 不同点：`codex-auth` 的主对象是账号和认证状态，`codex-switch` 的主对象应是 provider/profile 与本地配置文件
+- 不同点：`codex-auth` 的主对象是账号和认证状态，`agent-provider-switch` 的主对象应是 provider/profile 与本地配置文件
 
 ### 哪些能力值得借鉴
 
 - CLI-first 形态是对的
   - 它证明这类工具可以先以全局 CLI 成型，而不是先做桌面界面
 - npm 分发路线值得借鉴
-  - 对 `codex-switch` 来说，这和 TypeScript / Node.js 路线天然一致
+  - 对 `agent-provider-switch` 来说，这和 TypeScript / Node.js 路线天然一致
 - 命令入口清晰、职责分组明确
   - 这对后续 AI 调用尤其重要
 - `import` / `export` / `status` 这类产品化命令值得保留
@@ -124,7 +124,7 @@ README 还明确写到 npm 包支持 Linux、macOS、Windows 的 x64 / arm64 组
 
 ### 哪些能力当前不适合直接照搬
 
-- 多账号体系本身不是 `codex-switch` 的第一阶段核心
+- 多账号体系本身不是 `agent-provider-switch` 的第一阶段核心
 - usage limit 刷新与远程 API 调用不是当前 MVP 必需能力
 - `daemon`、后台自动切换、实验性自动策略过重
 - 面向 Codex App / VS Code / CLI 的统一账号管理范围过大
@@ -174,7 +174,7 @@ README 列出的核心功能包括：
 - 使用 Rust，不必然说明这个场景存在高性能需求
 - 更真实的原因通常是：桌面壳层、本地能力封装、安装包产出都跟 Tauri 技术栈绑定
 
-也就是说，`codex-switcher` 的 Rust 不是 `codex-switch` 必须跟进的证据。它更像是“因为要做桌面应用，所以自然进入 Rust + Web UI 的组合”。
+也就是说，`codex-switcher` 的 Rust 不是 `agent-provider-switch` 必须跟进的证据。它更像是“因为要做桌面应用，所以自然进入 Rust + Web UI 的组合”。
 
 ### 主要功能模块
 
@@ -195,13 +195,13 @@ README 列出的核心功能包括：
 ### 哪些交互 / 能力值得借鉴
 
 - 状态可见性强
-  - 即使 `codex-switch` 不做 GUI，也可以借鉴“状态汇总要直观”的思路，体现在 `status` / `doctor` 输出里
+  - 即使 `agent-provider-switch` 不做 GUI，也可以借鉴“状态汇总要直观”的思路，体现在 `status` / `doctor` 输出里
 - 多账号或多配置切换的路径足够短
-  - 这提醒 `codex-switch` 的命令设计要减少步骤
+  - 这提醒 `agent-provider-switch` 的命令设计要减少步骤
 - 导入既有本地文件的能力值得借鉴
   - 说明用户迁移成本要低
 
-### 哪些方向不符合 codex-switch 的 CLI-first 目标
+### 哪些方向不符合 agent-provider-switch 的 CLI-first 目标
 
 - GUI-first 本身不符合当前方向
 - Tauri / Rust 桌面分发不是当前第一阶段需要承担的复杂度
@@ -209,26 +209,26 @@ README 列出的核心功能包括：
 
 ## 对比分析
 
-| 维度 | `codex-auth` | `codex-switcher` | 对 `codex-switch` 的启发 |
+| 维度 | `codex-auth` | `codex-switcher` | 对 `agent-provider-switch` 的启发 |
 | --- | --- | --- | --- |
 | 产品形态 | CLI | Desktop App / GUI | 第一阶段更应靠近 CLI |
-| 核心对象 | 账号 / auth 状态 | 账号 / auth 状态 | `codex-switch` 需要把核心对象收敛到 provider/profile |
+| 核心对象 | 账号 / auth 状态 | 账号 / auth 状态 | `agent-provider-switch` 需要把核心对象收敛到 provider/profile |
 | 安装方式 | npm 全局安装 / `npx` | 从源码构建，依赖 Node.js、pnpm、Rust，产出 Tauri 应用 | 对 CLI-first MVP 来说，npm 分发更轻 |
 | 交互方式 | 命令驱动，可交互也可脚本化 | 图形界面、一键点击、桌面操作 | AI 调用更偏好稳定 CLI |
-| 是否适合 AI 调用 | 较适合 | 较不适合 | `codex-switch` 应优先提供稳定命令和 `--json` 输出 |
+| 是否适合 AI 调用 | 较适合 | 较不适合 | `agent-provider-switch` 应优先提供稳定命令和 `--json` 输出 |
 | 技术栈选择的真实原因 | 更像产品化 CLI 分发与作者实现选择，不是因为高 IO 压力 | 更像桌面应用形态带来的 Tauri / Rust 绑定 | 技术选型应服务产品形态，而不是为了“显得更底层” |
-| 对 `codex-switch` 的可借鉴点 | 命令分组、安装分发、导入导出、状态命令 | 状态可见性、切换路径短、迁移已有本地文件 | 以 `codex-auth` 为主参考，以 `codex-switcher` 的部分交互思想为辅 |
+| 对 `agent-provider-switch` 的可借鉴点 | 命令分组、安装分发、导入导出、状态命令 | 状态可见性、切换路径短、迁移已有本地文件 | 以 `codex-auth` 为主参考，以 `codex-switcher` 的部分交互思想为辅 |
 
 从这个对比可以直接得到两个重要结论：
 
-- `codex-switch` 在产品形态上明显更像 `codex-auth`
-- `codex-switcher` 的 Rust / Tauri 选择，不能直接推出 `codex-switch` 也应走原生桌面路线
+- `agent-provider-switch` 在产品形态上明显更像 `codex-auth`
+- `codex-switcher` 的 Rust / Tauri 选择，不能直接推出 `agent-provider-switch` 也应走原生桌面路线
 
-## codex-switch 当前产品方向
+## agent-provider-switch 当前产品方向
 
 ### 为什么更像 codex-auth，而不是 codex-switcher
 
-`codex-switch` 当前要解决的问题是：
+`agent-provider-switch` 当前要解决的问题是：
 
 - 读取本地 `~/.codex/config.toml`
 - 读取和维护本地 `providers.json`
@@ -285,7 +285,7 @@ Rust / Zig 不是不能做，而是当前收益不足。只有在下面这些诉
 
 ### MVP 的核心边界
 
-`codex-switch` 第一阶段建议只保留以下高价值核心能力：
+`agent-provider-switch` 第一阶段建议只保留以下高价值核心能力：
 
 - provider/profile 管理
   - 至少支持 list、current、add、remove
@@ -313,7 +313,7 @@ Rust / Zig 不是不能做，而是当前收益不足。只有在下面这些诉
 这里尤其要强调两点：
 
 - 不做 GUI，是为了先把核心切换能力做稳
-- 不做复杂账号系统，是为了避免把 `codex-switch` 变成另一个 `codex-auth`
+- 不做复杂账号系统，是为了避免把 `agent-provider-switch` 变成另一个 `codex-auth`
 
 ## 后续 PRD 输入项
 
@@ -336,7 +336,7 @@ Rust / Zig 不是不能做，而是当前收益不足。只有在下面这些诉
 
 这次合并后的研究结论可以压缩为三句话：
 
-> `codex-switch` 当前应定位为一个 CLI-first、本地优先、默认安全、对 AI 友好的 provider/profile 切换工具。
+> `agent-provider-switch` 当前应定位为一个 CLI-first、本地优先、默认安全、对 AI 友好的 provider/profile 切换工具。
 >
 > 它在产品形态上更接近 `codex-auth`，但核心对象应从账号 / auth 收敛为 provider/profile 与本地配置管理。
 >

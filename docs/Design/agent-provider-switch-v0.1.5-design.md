@@ -1,4 +1,4 @@
-# codex-switch v0.1.5 Design
+# agent-provider-switch v0.1.5 Design
 
 `0.1.5` is a Copilot Bridge process-visibility and redaction patch release.
 

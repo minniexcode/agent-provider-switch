@@ -1,4 +1,4 @@
-# codex-switch v0.3.1 Design Document
+# agent-provider-switch v0.3.1 Design Document
 
 Security patch release for the `0.3.0` dual-target line. No architecture change: the `--claude`
 parallel path, both registries, and the command surface are untouched.
@@ -47,7 +47,7 @@ authoring machine contains a live token.
 
 This is deliberate. The second pass treats any `--x` followed by a non-`--` token as
 `--x <value>` (`src/commands/args.ts:75-88`), so registering `--reveal` as a command option would
-make `codexs show --reveal deepseek` swallow `deepseek`. Pass 1 matches tokens by exact equality, so
+make `aps show --reveal deepseek` swallow `deepseek`. Pass 1 matches tokens by exact equality, so
 a global flag sidesteps that parser behaviour entirely. Fixing the parser is Phase 2 work
 (roadmap P1-1); this release does not depend on it.
 
@@ -158,7 +158,7 @@ managed JSON and TOML:
 | `claude-providers.json` | `writeClaudeProvidersFile` (`src/storage/claude-providers-repo.ts:42`) |
 | `~/.claude/settings.json` | `writeClaudeSettings` (`:80`) |
 | `~/.codex/config.toml` | `config-repo.ts:136`, `:165` |
-| `codex-switch.json` | `tool-config-repo.ts:47`, `:59` |
+| `agent-provider-switch.json` | `tool-config-repo.ts:47`, `:59` |
 | `backups/*/manifest.json`, `backups/latest.json` | `backup-repo.ts:46`, `:87` |
 
 So the fix goes in two functions rather than at every call site:
@@ -206,7 +206,7 @@ mutating command rewrites its target, so this resolves itself in normal use. For
 remediation of all files at once, on **macOS and Linux** only:
 
 ```bash
-chmod -R go-rwx ~/.config/codex-switch ~/.codex/config.toml ~/.codex/auth.json ~/.claude/settings.json
+chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/auth.json ~/.claude/settings.json
 ```
 
 On Windows this command is a **no-op** — verified: it exits 0 and leaves every mode unchanged,
@@ -447,7 +447,7 @@ parent, which is a tighter set than the design assumed and needs no call-site ch
 
 `rollbackBackup()` gained the explicit `allowedRoots` parameter and `handlers.ts` supplies three
 roots: the tool home, the Codex directory, and the Claude directory. The third is required because
-both targets share one `backups/` directory and one `latest.json`, so `codexs rollback` after a
+both targets share one `backups/` directory and one `latest.json`, so `aps rollback` after a
 `switch --claude` has to be allowed to restore `~/.claude/settings.json`. That is the only place the
 Codex handler reaches for Claude paths, and it is commented as such.
 
@@ -475,7 +475,7 @@ Verified on the authoring machine after implementation.
   `~/.claude` and `~/.codex` carry an explicit `CodexSandboxUsers:(OI)(CI)(RX)` ACE, whose members
   are `CodexSandboxOffline` and `CodexSandboxOnline` — the Codex Windows sandbox identities. The
   Codex sandbox can read `~/.claude/settings.json`, i.e. `ANTHROPIC_AUTH_TOKEN`.
-- `~/.config/codex-switch` carries no such ACE, so the tool's own registry and backup copies are
+- `~/.config/agent-provider-switch` carries no such ACE, so the tool's own registry and backup copies are
   the better-protected files. The exposure is on the file `switch --claude` writes, and it is
   inherited from `~/.claude`'s own ACL rather than created by this tool.
 - Removing it needs `icacls "…\.claude" /remove:g "CodexSandboxUsers"`. That reaches into another

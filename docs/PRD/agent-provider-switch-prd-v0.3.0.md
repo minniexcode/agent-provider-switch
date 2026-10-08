@@ -1,8 +1,8 @@
-# codex-switch v0.3.0 PRD
+# agent-provider-switch v0.3.0 PRD
 
 ## Summary
 
-`0.3.0` extends `@minniexcode/codex-switch` with Claude Code provider switching support via the `--claude` flag. The tool remains a local-first CLI managing provider/model-provider routing state, now supporting both Codex and Claude Code as switch targets.
+`0.3.0` extends `@minniexcode/agent-provider-switch` with Claude Code provider switching support via the `--claude` flag. The tool remains a local-first CLI managing provider/model-provider routing state, now supporting both Codex and Claude Code as switch targets.
 
 ## Version
 
@@ -58,21 +58,21 @@ type ClaudeProvidersFile = {
 };
 ```
 
-Storage location: `~/.config/codex-switch/claude-providers.json`
+Storage location: `~/.config/agent-provider-switch/claude-providers.json`
 
 ## Primary Claude Workflow
 
 ```bash
-codexs add --claude default --from-file ~/.claude/settings.json
-codexs add --claude copilot --from-file ~/.claude/settings-copilot.json
-codexs switch --claude copilot
-codexs current --claude
-codexs list --claude
+aps add --claude default --from-file ~/.claude/settings.json
+aps add --claude copilot --from-file ~/.claude/settings-copilot.json
+aps switch --claude copilot
+aps current --claude
+aps list --claude
 ```
 
 ## Switch Mechanism
 
-When `codexs switch --claude <name>` executes:
+When `aps switch --claude <name>` executes:
 1. Read the named provider from `claude-providers.json`
 2. Back up current `~/.claude/settings.json` via mutation framework
 3. Write the stored settings as the new `~/.claude/settings.json`
@@ -84,12 +84,12 @@ When `codexs switch --claude <name>` executes:
 ## Acceptance Criteria
 
 - Package metadata reports `0.3.0`.
-- `codexs add --claude <name> --from-file <path>` imports a settings.json into `claude-providers.json`.
-- `codexs switch --claude <name>` replaces `~/.claude/settings.json` with the stored profile.
-- `codexs list --claude` shows all Claude profiles with active detection.
-- `codexs current --claude` reports the active Claude profile or "unmanaged".
-- `codexs show --claude <name>` displays a Claude profile's details.
-- `codexs remove --claude <name>` removes a Claude profile with backup.
+- `aps add --claude <name> --from-file <path>` imports a settings.json into `claude-providers.json`.
+- `aps switch --claude <name>` replaces `~/.claude/settings.json` with the stored profile.
+- `aps list --claude` shows all Claude profiles with active detection.
+- `aps current --claude` reports the active Claude profile or "unmanaged".
+- `aps show --claude <name>` displays a Claude profile's details.
+- `aps remove --claude <name>` removes a Claude profile with backup.
 - All Claude operations use the existing lock and backup/rollback framework.
 - Existing Codex commands (without `--claude`) are completely unaffected.
 - `npm run build` passes without errors.

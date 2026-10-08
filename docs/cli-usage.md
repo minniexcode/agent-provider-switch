@@ -10,7 +10,7 @@ Current package version: `1.0.0`
 
 This line targets Codex `0.134.0+`, where the active route is selected by top-level `model` plus `model_provider`. Legacy top-level `profile` and `[profiles.*]` sections may still be inspected for migration/adoption, and `--create-profile` writes one on request, but they are not the recommended managed route.
 
-`1.0.0` renames the tool. The binary is `aps`, the package is `@minniexcode/agent-provider-switch`, the tool home is `~/.config/agent-provider-switch`, the environment variables are `APS_HOME` / `APS_CODEX_DIR` / `APS_CLAUDE_DIR`, and the state files are `agent-provider-switch.json` and `.aps.lock`. A `~/.config/codex-switch` home is moved automatically by the first command that runs. No command surface changed.
+`1.0.0` renames the tool. The binary is `aps`, the package is `@minniexcode/agent-provider-switch`, the tool home is `~/.config/agent-provider-switch`, the environment variables are `APS_HOME` / `APS_CODEX_DIR` / `APS_CLAUDE_DIR`, and the state files are `agent-provider-switch.json` and `.aps.lock`. A tool home left at the pre-`1.0.0` location is moved automatically by the first command that runs. No command surface changed.
 
 `0.4.1` adds `unlock` and `backups prune`, plus automatic backup retention, same-second backup uniqueness, and stale-lock takeover in the mutation path.
 
