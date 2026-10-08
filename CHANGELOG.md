@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+Repo-only. `1.0.0` is still the current release on npm: both entries below are cosmetic or
+internal, with no command surface and nothing a script reads, so they are held for the next
+release that has real substance rather than forcing a version bump of their own.
+
+### Changed
+
+- The top-level `--help` banner names both targets: "Manage and switch local Codex and Claude Code provider routing safely." It had advertised Codex-only routing since before Claude Code became the second target.
+- The wrapper that holds the shared lock is `withToolLock()`. Both targets contend for that one lock file, so it no longer carries either target's name. The old identifier is recorded in the `1.0.0` rename map.
+
 ## 1.0.0 - 2026-10-08
 
 Rename release. The tool stopped being Codex-only when `0.3.0` added Claude Code as a second target, and this release makes the name say so. One breaking change, no compatibility shims, no command-surface change.
