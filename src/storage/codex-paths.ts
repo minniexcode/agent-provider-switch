@@ -59,7 +59,7 @@ export type CodexSwitchConfig = {
 };
 
 /**
- * Resolves the tool home directory, defaulting to `~/.config/codex-switch`.
+ * Resolves the tool home directory, defaulting to `~/.config/agent-provider-switch`.
  */
 export function resolveCodexSwitchHome(toolHomeDir?: string): string {
   if (toolHomeDir) {
