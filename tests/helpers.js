@@ -88,7 +88,7 @@ async function withEnv(overrides, run) {
  *
  * The guard is structural rather than a convention each test has to remember. `switch` atomically
  * replaces `<claudeDir>/settings.json`, and `resolveClaudeDir()` silently falls back to the real
- * `~/.claude` when `CODEXS_CLAUDE_DIR` is unset — so a spec that forgets the variable overwrites
+ * `~/.claude` when `APS_CLAUDE_DIR` is unset — so a spec that forgets the variable overwrites
  * the developer's live Claude Code settings. Every check below runs before the callback does, and
  * the callback receives only the verified path.
  */
@@ -110,7 +110,7 @@ async function withClaudeEnv(settings, run) {
     `Claude root must stay inside the test temp directory, got ${claudeDir}`
   );
 
-  return withEnv({ CODEXS_CLAUDE_DIR: claudeDir }, () => run({ toolHomeDir, claudeDir, importFile }));
+  return withEnv({ APS_CLAUDE_DIR: claudeDir }, () => run({ toolHomeDir, claudeDir, importFile }));
 }
 
 /**
@@ -170,18 +170,18 @@ async function runBuiltCli(input) {
   // The Codex directory is never used as the tool home: `--codex-dir` names the target runtime
   // a command operates on, while the tool home holds this tool's own state. A call that names
   // neither is pointed at a temporary Codex directory so it cannot touch the real ~/.codex.
-  const overrides = { CODEXS_HOME: toolHomeDir };
+  const overrides = { APS_HOME: toolHomeDir };
   if (!args.includes("--codex-dir")) {
-    overrides.CODEXS_CODEX_DIR = makeTempDir("codex-switch-codex-");
+    overrides.APS_CODEX_DIR = makeTempDir("codex-switch-codex-");
   }
 
   // Claude commands replace `settings.json` wholesale, and `resolveClaudeDir()` falls back to
-  // the real `~/.claude` when `CODEXS_CLAUDE_DIR` is unset — so a spec that names `--claude`
+  // the real `~/.claude` when `APS_CLAUDE_DIR` is unset — so a spec that names `--claude`
   // without arranging the root overwrites the developer's live settings. Guarded here, beside
   // the Codex equivalent, so it does not depend on each spec remembering.
   // `withClaudeEnv()` sets the variable before calling in and is left alone.
-  if (args.includes("--claude") && !process.env.CODEXS_CLAUDE_DIR) {
-    overrides.CODEXS_CLAUDE_DIR = makeTempDir("codex-switch-claude-");
+  if (args.includes("--claude") && !process.env.APS_CLAUDE_DIR) {
+    overrides.APS_CLAUDE_DIR = makeTempDir("codex-switch-claude-");
   }
 
   const stdout = [];

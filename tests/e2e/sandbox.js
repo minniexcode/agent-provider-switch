@@ -29,7 +29,7 @@ function skip(reason) {
  * Resolves `candidate` and refuses it unless it stays strictly inside `sandboxRoot`.
  *
  * Structural rather than conventional. `resolveClaudeDir()` falls back to the real `~/.claude`
- * when `CODEXS_CLAUDE_DIR` is unset, and `switch --claude` replaces `settings.json` wholesale —
+ * when `APS_CLAUDE_DIR` is unset, and `switch --claude` replaces `settings.json` wholesale —
  * so a root that escapes is not a failed assertion, it is a destroyed developer configuration.
  *
  * Compared as a path relative to the sandbox rather than by string prefix, so a sibling such as
@@ -78,9 +78,9 @@ function createSandbox() {
 
   const sandbox = {
     root,
-    home: assertInsideSandbox(root, path.join(root, "home"), "CODEXS_HOME"),
-    codex: assertInsideSandbox(root, path.join(root, "codex"), "CODEXS_CODEX_DIR"),
-    claude: assertInsideSandbox(root, path.join(root, "claude"), "CODEXS_CLAUDE_DIR"),
+    home: assertInsideSandbox(root, path.join(root, "home"), "APS_HOME"),
+    codex: assertInsideSandbox(root, path.join(root, "codex"), "APS_CODEX_DIR"),
+    claude: assertInsideSandbox(root, path.join(root, "claude"), "APS_CLAUDE_DIR"),
   };
 
   for (const directory of [sandbox.home, sandbox.codex, sandbox.claude]) {
@@ -165,23 +165,23 @@ function writeCleanCodex(sandbox, baseUrl = "https://freemodel.example/v1") {
 /**
  * Builds the child environment explicitly rather than inheriting it.
  *
- * Ambient `CODEXS_*` is dropped so an inherited value cannot redirect a root out of the sandbox,
+ * Ambient `APS_*` is dropped so an inherited value cannot redirect a root out of the sandbox,
  * and `NODE_ENV` is dropped because `NODE_ENV=development` retargets Codex resolution at
  * `<cwd>/dev-codex/local-sandbox` and adds the real `~/.codex` to migrate's candidate list.
  */
 function buildChildEnv(sandbox, extra = {}) {
   const env = {};
   for (const [name, value] of Object.entries(process.env)) {
-    if (name.startsWith("CODEXS_") || name === "NODE_ENV") {
+    if (name.startsWith("APS_") || name === "NODE_ENV") {
       continue;
     }
     env[name] = value;
   }
 
   // Re-verified here, not only at creation: this is the last point before a child that writes.
-  env.CODEXS_HOME = assertInsideSandbox(sandbox.root, sandbox.home, "CODEXS_HOME");
-  env.CODEXS_CODEX_DIR = assertInsideSandbox(sandbox.root, sandbox.codex, "CODEXS_CODEX_DIR");
-  env.CODEXS_CLAUDE_DIR = assertInsideSandbox(sandbox.root, sandbox.claude, "CODEXS_CLAUDE_DIR");
+  env.APS_HOME = assertInsideSandbox(sandbox.root, sandbox.home, "APS_HOME");
+  env.APS_CODEX_DIR = assertInsideSandbox(sandbox.root, sandbox.codex, "APS_CODEX_DIR");
+  env.APS_CLAUDE_DIR = assertInsideSandbox(sandbox.root, sandbox.claude, "APS_CLAUDE_DIR");
 
   return { ...env, ...extra };
 }
@@ -198,7 +198,7 @@ function tryParseJson(text) {
  * Runs one real `node dist/cli.js <args>` in a child process and captures its real exit code.
  */
 function runCli(sandbox, args, options = {}) {
-  // `migrate` is the one command that does not take CODEXS_CODEX_DIR as authoritative:
+  // `migrate` is the one command that does not take APS_CODEX_DIR as authoritative:
   // `codexDirExplicit` is set only by a literal `--codex-dir`, so without it migrate runs
   // ambient discovery, which reaches the real `~/.codex` and returns CODEX_DIR_AMBIGUOUS —
   // or silently adopts the developer's own Codex directory when the sandbox has none.
@@ -206,7 +206,7 @@ function runCli(sandbox, args, options = {}) {
   if (args[0] === "migrate" && !args.includes("--codex-dir")) {
     throw new Error(
       "E2E isolation: migrate must be invoked with an explicit --codex-dir, " +
-        "because CODEXS_CODEX_DIR alone does not stop its ambient discovery"
+        "because APS_CODEX_DIR alone does not stop its ambient discovery"
     );
   }
 

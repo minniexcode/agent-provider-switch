@@ -8,23 +8,23 @@ const { makeTempDir, repoRoot } = require("./helpers");
 /**
  * Spawns the built CLI as a real child process.
  *
- * The ambient `CODEXS_*` variables and `NODE_ENV` are dropped rather than inherited: an
+ * The ambient `APS_*` variables and `NODE_ENV` are dropped rather than inherited: an
  * inherited `NODE_ENV=development` retargets Codex resolution at `<cwd>/dev-codex/local-sandbox`
- * and adds the real `~/.codex` to migrate's candidate list, and an inherited `CODEXS_HOME` would
+ * and adds the real `~/.codex` to migrate's candidate list, and an inherited `APS_HOME` would
  * let a spec operate on the developer's own tool home. All three roots are set explicitly.
  */
 function spawnCli(args) {
   const env = { ...process.env };
   for (const name of Object.keys(env)) {
-    if (name.startsWith("CODEXS_")) {
+    if (name.startsWith("APS_")) {
       delete env[name];
     }
   }
   delete env.NODE_ENV;
 
-  env.CODEXS_HOME = makeTempDir("codex-switch-proc-home-");
-  env.CODEXS_CODEX_DIR = makeTempDir("codex-switch-proc-codex-");
-  env.CODEXS_CLAUDE_DIR = makeTempDir("codex-switch-proc-claude-");
+  env.APS_HOME = makeTempDir("codex-switch-proc-home-");
+  env.APS_CODEX_DIR = makeTempDir("codex-switch-proc-codex-");
+  env.APS_CLAUDE_DIR = makeTempDir("codex-switch-proc-claude-");
 
   const result = spawnSync(process.execPath, [path.join(repoRoot, "dist", "cli.js"), ...args], {
     cwd: repoRoot,

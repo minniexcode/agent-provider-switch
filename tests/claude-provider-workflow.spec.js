@@ -96,7 +96,7 @@ module.exports = {
       },
     },
     {
-      name: "switch --claude writes settings.json into CODEXS_CLAUDE_DIR",
+      name: "switch --claude writes settings.json into APS_CLAUDE_DIR",
       async run() {
         await withClaudeEnv(SAMPLE_SETTINGS, async ({ toolHomeDir, claudeDir, importFile }) => {
           const result = await addAndSwitch(toolHomeDir, importFile);
@@ -108,7 +108,7 @@ module.exports = {
           // Proves the environment variable took effect: without it the write lands in ~/.claude.
           // The directory did not exist, so this also covers the creation branch.
           const settingsPath = path.join(claudeDir, "settings.json");
-          assert.equal(fs.existsSync(settingsPath), true, "switch must write inside CODEXS_CLAUDE_DIR");
+          assert.equal(fs.existsSync(settingsPath), true, "switch must write inside APS_CLAUDE_DIR");
 
           const written = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
           assert.equal(written.model, "claude-sonnet-5");

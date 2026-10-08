@@ -29,19 +29,19 @@ async function withClaudeToolHome(run) {
     "utf8"
   );
 
-  const previousClaudeDir = process.env.CODEXS_CLAUDE_DIR;
+  const previousClaudeDir = process.env.APS_CLAUDE_DIR;
   try {
     return await withTempDir("codex-switch-claude-dir-", async (claudeDir) => {
       // Point the Claude target at a throwaway directory so `current`/`list` cannot
       // read or write the real ~/.claude during the run.
-      process.env.CODEXS_CLAUDE_DIR = claudeDir;
+      process.env.APS_CLAUDE_DIR = claudeDir;
       return await run(toolHomeDir);
     });
   } finally {
     if (previousClaudeDir === undefined) {
-      delete process.env.CODEXS_CLAUDE_DIR;
+      delete process.env.APS_CLAUDE_DIR;
     } else {
-      process.env.CODEXS_CLAUDE_DIR = previousClaudeDir;
+      process.env.APS_CLAUDE_DIR = previousClaudeDir;
     }
   }
 }

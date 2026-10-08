@@ -27,7 +27,7 @@ module.exports = {
           path.join(os.tmpdir(), "some-unrelated-directory"),
         ]) {
           assert.throws(
-            () => assertInsideSandbox(sandbox.root, escapee, "CODEXS_CLAUDE_DIR"),
+            () => assertInsideSandbox(sandbox.root, escapee, "APS_CLAUDE_DIR"),
             /resolved outside the E2E sandbox/,
             `expected ${escapee} to be refused`
           );
@@ -35,7 +35,7 @@ module.exports = {
 
         // The sandbox root itself is not a valid root for a child: it would put every target in
         // one directory, which is not the isolation the guard is asserting.
-        assert.throws(() => assertInsideSandbox(sandbox.root, sandbox.root, "CODEXS_HOME"));
+        assert.throws(() => assertInsideSandbox(sandbox.root, sandbox.root, "APS_HOME"));
       },
     },
     {
@@ -48,7 +48,7 @@ module.exports = {
         const sibling = `${sandbox.root}-elsewhere`;
         fs.mkdirSync(sibling, { recursive: true });
         assert.throws(
-          () => assertInsideSandbox(sandbox.root, sibling, "CODEXS_HOME"),
+          () => assertInsideSandbox(sandbox.root, sibling, "APS_HOME"),
           /resolved outside the E2E sandbox/
         );
       },
@@ -59,8 +59,8 @@ module.exports = {
         const sandbox = createSandbox();
         const nested = path.join(sandbox.root, "nested", "tool-home");
 
-        assert.equal(assertInsideSandbox(sandbox.root, nested, "CODEXS_HOME"), path.resolve(nested));
-        assert.equal(assertInsideSandbox(sandbox.root, sandbox.home, "CODEXS_HOME"), sandbox.home);
+        assert.equal(assertInsideSandbox(sandbox.root, nested, "APS_HOME"), path.resolve(nested));
+        assert.equal(assertInsideSandbox(sandbox.root, sandbox.home, "APS_HOME"), sandbox.home);
       },
     },
     {
@@ -81,13 +81,13 @@ module.exports = {
       run() {
         const sandbox = createSandbox();
         const previous = {
-          CODEXS_HOME: process.env.CODEXS_HOME,
-          CODEXS_CLAUDE_DIR: process.env.CODEXS_CLAUDE_DIR,
+          APS_HOME: process.env.APS_HOME,
+          APS_CLAUDE_DIR: process.env.APS_CLAUDE_DIR,
           NODE_ENV: process.env.NODE_ENV,
         };
 
-        process.env.CODEXS_HOME = path.resolve(os.homedir(), ".config", "codex-switch");
-        process.env.CODEXS_CLAUDE_DIR = path.resolve(os.homedir(), ".claude");
+        process.env.APS_HOME = path.resolve(os.homedir(), ".config", "codex-switch");
+        process.env.APS_CLAUDE_DIR = path.resolve(os.homedir(), ".claude");
         process.env.NODE_ENV = "development";
 
         let env;
@@ -106,9 +106,9 @@ module.exports = {
         // `NODE_ENV=development` would retarget Codex resolution at dev-codex/local-sandbox and
         // add the real ~/.codex to migrate's candidate list.
         assert.equal(env.NODE_ENV, undefined, "NODE_ENV must not reach the child");
-        assert.equal(env.CODEXS_HOME, sandbox.home);
-        assert.equal(env.CODEXS_CODEX_DIR, sandbox.codex);
-        assert.equal(env.CODEXS_CLAUDE_DIR, sandbox.claude);
+        assert.equal(env.APS_HOME, sandbox.home);
+        assert.equal(env.APS_CODEX_DIR, sandbox.codex);
+        assert.equal(env.APS_CLAUDE_DIR, sandbox.claude);
       },
     },
     {
@@ -122,7 +122,7 @@ module.exports = {
           process.execPath,
           [
             "-e",
-            "process.stdout.write(JSON.stringify({home: process.env.CODEXS_HOME, codex: process.env.CODEXS_CODEX_DIR, claude: process.env.CODEXS_CLAUDE_DIR, nodeEnv: process.env.NODE_ENV ?? null}))",
+            "process.stdout.write(JSON.stringify({home: process.env.APS_HOME, codex: process.env.APS_CODEX_DIR, claude: process.env.APS_CLAUDE_DIR, nodeEnv: process.env.NODE_ENV ?? null}))",
           ],
           { env: buildChildEnv(sandbox), encoding: "utf8" }
         );

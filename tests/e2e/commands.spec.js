@@ -281,7 +281,7 @@ module.exports = {
       run() {
         const sandbox = createSandbox();
 
-        // The guard's reason for existing: CODEXS_CODEX_DIR does not stop migrate's ambient
+        // The guard's reason for existing: APS_CODEX_DIR does not stop migrate's ambient
         // discovery, so an unwrapped call inspects the developer's real ~/.codex.
         assert.throws(() => runCli(sandbox, ["migrate", "--json"]), /migrate must be invoked with an explicit --codex-dir/);
       },

@@ -1,8 +1,8 @@
 import * as os from "node:os";
 import * as path from "node:path";
 
-export const CODEX_DIR_ENV_NAME = "CODEXS_CODEX_DIR";
-export const TOOL_HOME_ENV_NAME = "CODEXS_HOME";
+export const CODEX_DIR_ENV_NAME = "APS_CODEX_DIR";
+export const TOOL_HOME_ENV_NAME = "APS_HOME";
 
 /**
  * Names of the artifacts this tool owns inside the tool home.

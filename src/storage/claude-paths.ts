@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 
-export const CLAUDE_DIR_ENV_NAME = "CODEXS_CLAUDE_DIR";
+export const CLAUDE_DIR_ENV_NAME = "APS_CLAUDE_DIR";
 
 /**
  * Absolute paths used by codex-switch for Claude Code provider management.
