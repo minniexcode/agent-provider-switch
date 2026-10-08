@@ -277,6 +277,35 @@ function sandboxPathWithoutCodex(sandbox) {
   return emptyPath;
 }
 
+/**
+ * A `PATH` holding only a stand-in `codex` that reports `version`, so `probeCodexRuntime()`
+ * deterministically finds a supported CLI whether or not the host has one.
+ *
+ * The counterpart of `sandboxPathWithoutCodex`, and both are needed: a case that asserts a healthy
+ * `doctor` and leaves `PATH` ambient passes on a developer machine that happens to have the real
+ * CLI installed and fails on a CI runner that does not. The probe only runs `codex --version` and
+ * parses a semver out of the output, so a shim that echoes one is a faithful stand-in. `PATH` is the
+ * shim's directory and nothing else, so a real `codex` elsewhere on the host cannot be reached.
+ *
+ * On Windows the probe goes through `cmd.exe /c`, which resolves `codex.cmd` via `PATHEXT`; on POSIX
+ * it spawns `codex` directly, hence the executable script.
+ */
+function sandboxPathWithFakeCodex(sandbox, version = "0.200.0") {
+  const binDir = path.join(sandbox.root, "fake-codex-bin");
+  fs.mkdirSync(binDir, { recursive: true });
+
+  if (process.platform === "win32") {
+    fs.writeFileSync(path.join(binDir, "codex.cmd"), `@echo off\r\necho codex-cli ${version}\r\n`, "utf8");
+  } else {
+    const shim = path.join(binDir, "codex");
+    fs.writeFileSync(shim, `#!/bin/sh\necho "codex-cli ${version}"\n`, "utf8");
+    // Applied after the write: the mode passed at write time is masked by the umask.
+    fs.chmodSync(shim, 0o755);
+  }
+
+  return binDir;
+}
+
 function removeSandbox(root) {
   try {
     fs.rmSync(root, { recursive: true, force: true });
@@ -312,6 +341,7 @@ module.exports = {
   runOk,
   runFail,
   sandboxPathWithoutCodex,
+  sandboxPathWithFakeCodex,
   cleanupSandboxes,
   writeJson,
 };

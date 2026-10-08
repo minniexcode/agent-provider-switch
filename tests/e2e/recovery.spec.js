@@ -9,6 +9,7 @@ const {
   runFail,
   runOk,
   sandboxPathWithoutCodex,
+  sandboxPathWithFakeCodex,
   seedCodex,
   writeCleanCodex,
   writeJson,
@@ -250,10 +251,14 @@ module.exports = {
         writeCleanCodex(sandbox);
         addProvider(sandbox, "freemodel");
 
-        // `codex` is stripped from PATH so the runtime probe is deterministic both on a machine
-        // that has a real CLI and on a CI runner that does not.
+        // Both ends of the runtime probe are pinned, never left to the host. The healthy case gets a
+        // stand-in `codex` and the missing case gets an empty PATH, so the result is the same on a
+        // developer machine that has the real CLI and on a CI runner that does not. The healthy case
+        // used to run on the ambient PATH, which passed locally and failed on every CI leg with
+        // CODEX_NOT_INSTALLED.
+        const withCodex = { PATH: sandboxPathWithFakeCodex(sandbox) };
         const withoutCodex = { PATH: sandboxPathWithoutCodex(sandbox) };
-        const healthy = runOk(sandbox, ["doctor", "--json"]);
+        const healthy = runOk(sandbox, ["doctor", "--json"], { env: withCodex });
         assert.equal(
           healthy.json.data.healthy,
           true,
@@ -261,7 +266,7 @@ module.exports = {
         );
         assert.deepEqual(healthy.json.data.issues, []);
 
-        const humanHealthy = runCli(sandbox, ["doctor"]);
+        const humanHealthy = runCli(sandbox, ["doctor"], { env: withCodex });
         assert.match(humanHealthy.stdout, /^Doctor summary: healthy\. No action required\.$/m);
 
         const stripped = runOk(sandbox, ["doctor", "--json"], { env: withoutCodex });

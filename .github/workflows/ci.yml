@@ -49,8 +49,11 @@ jobs:
       # in-process suite structurally cannot provide — exit codes, stdout truncation, env
       # isolation. `tests/e2e/` sits outside the main runner's discovery for the same reason.
       #
-      # No environment-dependent skips are needed: `migrate`'s happy path needs a TTY and
-      # `doctor`'s codex-found branch is driven by an emptied PATH, so both are deterministic on a
-      # runner that has no codex CLI. The runner still prints a skip count, unlike `run-tests.js`,
+      # No environment-dependent skips are needed: `migrate`'s happy path needs a TTY, and
+      # `doctor`'s runtime probe is pinned at both ends — a stand-in `codex` on a sandboxed PATH for
+      # the found branch, an emptied PATH for the missing one — so neither depends on whether the
+      # runner has the CLI. (The found branch used to run on the ambient PATH, which is why this
+      # step passed on a developer machine with codex installed and failed on every runner.) The
+      # runner still prints a skip count, unlike `run-tests.js`,
       # because a silently skipped case here would hide exactly what this suite exists to expose.
       - run: npm run test:e2e
