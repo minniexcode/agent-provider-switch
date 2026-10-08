@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import { ClaudeDefaults } from "../domain/claude-providers";
 import { cliError } from "../domain/errors";
 import { AgentProviderSwitchConfig } from "./codex-paths";
 import { ensureDir, writeTextFileAtomic } from "./fs-utils";
@@ -75,8 +76,54 @@ function validateToolConfig(config: AgentProviderSwitchConfig, toolConfigPath: s
       file: toolConfigPath,
     });
   }
-  return {
+
+  const normalized: AgentProviderSwitchConfig = {
     version: config.version,
     defaultCodexDir: config.defaultCodexDir,
   };
+  // Added only when present: this function rebuilds the object rather than preserving it, so a
+  // field it does not copy is erased on the next read. That is the reason `claudeDefaults` is
+  // handled here at all — and the reason an absent block must stay absent instead of becoming
+  // an explicit `undefined` that a deep-equality check would see as a difference.
+  if (config.claudeDefaults !== undefined) {
+    normalized.claudeDefaults = validateClaudeDefaults(config.claudeDefaults, toolConfigPath);
+  }
+  return normalized;
+}
+
+/**
+ * Validates the shared Claude settings block.
+ *
+ * Unknown keys are refused rather than dropped. The likeliest hand-written mistake is putting
+ * `env` directly under `claudeDefaults` and forgetting the `settings` wrapper; silently ignoring
+ * it would leave every provider with no inherited env and no message saying why.
+ */
+function validateClaudeDefaults(value: unknown, toolConfigPath: string): ClaudeDefaults {
+  if (!isPlainObject(value)) {
+    throw cliError("INVALID_CONFIG", "agent-provider-switch.json.claudeDefaults must be an object when provided.", {
+      file: toolConfigPath,
+    });
+  }
+
+  const unknownKeys = Object.keys(value).filter((key) => key !== "settings");
+  if (unknownKeys.length > 0) {
+    throw cliError(
+      "INVALID_CONFIG",
+      `agent-provider-switch.json.claudeDefaults only supports "settings"; found ${unknownKeys.map((key) => `"${key}"`).join(", ")}. ` +
+        "Nest those keys under claudeDefaults.settings.",
+      { file: toolConfigPath }
+    );
+  }
+
+  if (!isPlainObject(value.settings)) {
+    throw cliError("INVALID_CONFIG", "agent-provider-switch.json.claudeDefaults.settings must be an object.", {
+      file: toolConfigPath,
+    });
+  }
+
+  return { settings: value.settings };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,5 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import type { ClaudeDefaults } from "../domain/claude-providers";
 
 export const CODEX_DIR_ENV_NAME = "APS_CODEX_DIR";
 export const TOOL_HOME_ENV_NAME = "APS_HOME";
@@ -56,6 +57,7 @@ export type CodexPaths = ToolHomePaths & {
 export type AgentProviderSwitchConfig = {
   version: string;
   defaultCodexDir?: string;
+  claudeDefaults?: ClaudeDefaults;
 };
 
 /**

@@ -8,6 +8,17 @@ export type ClaudeProviderRecord = {
 };
 
 /**
+ * The shared default settings every Claude provider inherits, stored in the tool config.
+ *
+ * The inner shape mirrors a provider record on purpose, so resolving a record is the symmetric
+ * `merge(defaults.settings, record.settings)` and a future target-level field (a note, tags) has
+ * somewhere to live without reshaping the block.
+ */
+export type ClaudeDefaults = {
+  settings: Record<string, unknown>;
+};
+
+/**
  * Root claude-providers.json document shape.
  */
 export type ClaudeProvidersFile = {
