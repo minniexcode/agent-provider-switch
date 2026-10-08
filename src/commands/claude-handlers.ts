@@ -7,7 +7,7 @@ import { claudeSwitchProvider } from "../app/claude-switch-provider";
 import { CommandResult } from "../app/types";
 import { cliError } from "../domain/errors";
 import { createClaudePaths } from "../storage/claude-paths";
-import { resolveCodexSwitchHome } from "../storage/codex-paths";
+import { createToolHomePaths } from "../storage/codex-paths";
 import { canPrompt, confirmProviderRemoval } from "../interaction/interactive";
 import { getSingleOption, hasFlag } from "./args";
 import { CommandExecutionContext, ParsedCommand } from "./types";
@@ -51,11 +51,11 @@ export async function handleClaudeCommand(
   parsed: ParsedCommand,
   runtime = createPromptRuntime()
 ): Promise<CommandResult> {
-  const toolHomeDir = resolveCodexSwitchHome();
-  const claudePaths = createClaudePaths(toolHomeDir);
-  const lockPath = require("node:path").join(toolHomeDir, ".codex-switch.lock");
-  const backupsDir = require("node:path").join(toolHomeDir, "backups");
-  const latestBackupPath = require("node:path").join(toolHomeDir, "backups", "latest.json");
+  const toolHomePaths = createToolHomePaths();
+  const claudePaths = createClaudePaths(toolHomePaths.toolHomeDir);
+  const lockPath = toolHomePaths.lockPath;
+  const backupsDir = toolHomePaths.backupsDir;
+  const latestBackupPath = toolHomePaths.latestBackupPath;
 
   switch (ctx.command) {
     case "add": {

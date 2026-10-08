@@ -45,8 +45,11 @@ function sleepSync(milliseconds: number): void {
  * and failed for no reason the user could act on. The retry is bounded and rethrows the original
  * error, so a genuine permission failure is still reported as itself — just a few hundred
  * milliseconds later.
+ *
+ * Exported for the tool-home migration, which moves a directory rather than a file and hits the
+ * same transient Windows failures.
  */
-function renameWithRetryOnWindows(from: string, to: string): void {
+export function renameWithRetryOnWindows(from: string, to: string): void {
   if (process.platform !== "win32") {
     fs.renameSync(from, to);
     return;
