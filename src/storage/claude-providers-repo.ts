@@ -13,7 +13,7 @@ import { writeTextFileAtomic } from "./fs-utils";
  */
 export function readClaudeProvidersFile(providersPath: string): ClaudeProvidersFile {
   if (!fs.existsSync(providersPath)) {
-    throw cliError("CLAUDE_PROVIDERS_NOT_FOUND", "claude-providers.json not found. Run `codexs add --claude` first.", {
+    throw cliError("CLAUDE_PROVIDERS_NOT_FOUND", "claude-providers.json not found. Run `aps add --claude` first.", {
       file: providersPath,
     });
   }

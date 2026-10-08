@@ -35,15 +35,15 @@ module.exports = {
         for (const args of [[], ["--json"], ["--help"], ["-h"]]) {
           const result = await invoke(args);
           assert.equal(result.status, 0, `expected ${JSON.stringify(args)} to exit 0`);
-          assert.match(result.stdout, /^codex-switch$/m, JSON.stringify(args));
+          assert.match(result.stdout, /^agent-provider-switch$/m, JSON.stringify(args));
         }
 
         // Bucket 2 — a recognized command-group root. Both of these are help topics without
         // being command ids, which is why the predicate has to be the help-topic one.
         for (const root of ["config", "backups"]) {
           const result = await invoke([root]);
-          assert.equal(result.status, 0, `codexs ${root} must exit 0`);
-          assert.match(result.stdout, new RegExp(`^codexs ${root}$`, "m"));
+          assert.equal(result.status, 0, `aps ${root} must exit 0`);
+          assert.match(result.stdout, new RegExp(`^aps ${root}$`, "m"));
           assert.match(result.stdout, new RegExp(`Available ${root} commands:`));
         }
 
@@ -58,7 +58,7 @@ module.exports = {
         // `--help` wins over a topic that cannot be resolved, rather than erroring on the topic.
         const ignored = await invoke(["--help", "list"]);
         assert.equal(ignored.status, 0);
-        assert.match(ignored.stdout, /^codex-switch$/m);
+        assert.match(ignored.stdout, /^agent-provider-switch$/m);
       },
     },
     {
@@ -129,7 +129,7 @@ module.exports = {
         const codexDir = makeCodexFixture();
 
         // The flag is stripped in the parser's first pass, before command resolution, so it is
-        // position-independent. `codexs --claude list` printed top-level help before this.
+        // position-independent. `aps --claude list` printed top-level help before this.
         const result = await runJsonCli({
           toolHomeDir,
           args: ["--claude", "list", "--json", "--codex-dir", codexDir],
@@ -152,7 +152,7 @@ module.exports = {
         // been a whole-array scan, because the exit-code rule depends on help being reliable.
         const result = await invoke(["add", "probe", "--api-key", "-h"]);
         assert.equal(result.status, 0);
-        assert.match(result.stdout, /^codexs add$/m);
+        assert.match(result.stdout, /^aps add$/m);
       },
     },
     {

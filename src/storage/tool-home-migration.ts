@@ -66,7 +66,7 @@ export function migrateLegacyToolHome(input: {
     return noMigration();
   }
 
-  // Guard 4: a legacy lock whose owner may still be running means a pre-rename `codexs` process
+  // Guard 4: a legacy lock whose owner may still be running means a pre-rename `aps` process
   // is live against this home. Moving it out from under that process would leave two writers on
   // two different files. `dead`, `unreadable` and `malformed` are all residue, so they move.
   const legacyLock = inspectLock(path.join(legacyHomeDir, LEGACY_LOCK_FILENAME));

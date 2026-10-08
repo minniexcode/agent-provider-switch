@@ -32,7 +32,7 @@ export type LockState = {
 };
 
 /**
- * Executes a mutation while holding an exclusive codex-switch lock file.
+ * Executes a mutation while holding an exclusive agent-provider-switch lock file.
  *
  * Returns the mutation's value alongside any warnings raised while taking the lock, so a
  * takeover is reported in the command's structured result rather than only on disk.
@@ -62,7 +62,7 @@ export function acquireLock(lockPath: string, operation: string): { warnings: st
       // Only EEXIST means another writer holds the lock. EACCES, EROFS, ENOSPC and ENOENT
       // are I/O failures, and reporting those as "another operation is already running"
       // sends the user to a remedy that cannot work.
-      throw cliError("LOCK_IO_FAILED", "Could not create the codex-switch lock file.", {
+      throw cliError("LOCK_IO_FAILED", "Could not create the agent-provider-switch lock file.", {
         file: lockPath,
         cause: normalizeError(error).message,
       });
@@ -71,7 +71,7 @@ export function acquireLock(lockPath: string, operation: string): { warnings: st
 
   const observed = inspectLock(lockPath);
   if (!isRecoverableLock(observed)) {
-    throw cliError("LOCK_CONFLICT", "Another codex-switch write operation is already running.", {
+    throw cliError("LOCK_CONFLICT", "Another agent-provider-switch write operation is already running.", {
       file: lockPath,
       activeOperation: observed.record?.operation ?? "unknown",
       activePid: observed.record?.pid ?? null,
@@ -86,8 +86,8 @@ export function acquireLock(lockPath: string, operation: string): { warnings: st
       note:
         observed.status === "foreign"
           ? "This lock was created on a different host, so its owner cannot be verified here."
-          : "If the recorded process is a recycled pid, no codex-switch operation is actually running.",
-      remedy: "Run `codexs unlock --force` to clear it.",
+          : "If the recorded process is a recycled pid, no agent-provider-switch operation is actually running.",
+      remedy: "Run `aps unlock --force` to clear it.",
     });
   }
 
@@ -106,7 +106,7 @@ function claimLock(lockPath: string, operation: string, observed: LockState): vo
   const current = readLockRecord(lockPath);
   const verified = observed.record;
   if (verified && (current?.pid !== verified.pid || current?.createdAt !== verified.createdAt)) {
-    throw cliError("LOCK_CONFLICT", "Another codex-switch write operation took over the lock first.", {
+    throw cliError("LOCK_CONFLICT", "Another agent-provider-switch write operation took over the lock first.", {
       file: lockPath,
       activePid: current?.pid ?? null,
       requestedOperation: operation,
@@ -120,14 +120,14 @@ function claimLock(lockPath: string, operation: string, observed: LockState): vo
   } catch (error: unknown) {
     // A failed takeover is never followed by a mutation: the caller sees an error instead.
     if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-      throw cliError("LOCK_CONFLICT", "Another codex-switch write operation is already running.", {
+      throw cliError("LOCK_CONFLICT", "Another agent-provider-switch write operation is already running.", {
         file: lockPath,
         requestedOperation: operation,
         remedy: "Retry the command.",
       });
     }
 
-    throw cliError("LOCK_IO_FAILED", "Could not take over the codex-switch lock file.", {
+    throw cliError("LOCK_IO_FAILED", "Could not take over the agent-provider-switch lock file.", {
       file: lockPath,
       cause: normalizeError(error).message,
     });
@@ -294,7 +294,7 @@ function isProcessAlive(pid: number): boolean {
 }
 
 /**
- * Reports whether a recorded pid could have been written by a running codex-switch process.
+ * Reports whether a recorded pid could have been written by a running agent-provider-switch process.
  */
 function isValidPid(pid: unknown): pid is number {
   return typeof pid === "number" && Number.isInteger(pid) && pid > 0;
@@ -305,12 +305,12 @@ function isValidPid(pid: unknown): pid is number {
  */
 function describeTakeover(state: LockState): string {
   if (state.status === "unreadable") {
-    return "Cleared an unreadable codex-switch lock left behind by a process that was killed mid-write.";
+    return "Cleared an unreadable agent-provider-switch lock left behind by a process that was killed mid-write.";
   }
 
   if (state.status === "malformed") {
-    return `Cleared a malformed codex-switch lock (recorded pid ${JSON.stringify(state.record?.pid ?? null)}).`;
+    return `Cleared a malformed agent-provider-switch lock (recorded pid ${JSON.stringify(state.record?.pid ?? null)}).`;
   }
 
-  return `Took over a stale codex-switch lock: ${describeLockOwner(state)}.`;
+  return `Took over a stale agent-provider-switch lock: ${describeLockOwner(state)}.`;
 }

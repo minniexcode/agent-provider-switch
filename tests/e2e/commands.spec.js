@@ -229,7 +229,7 @@ module.exports = {
 
         const human = runCli(sandbox, ["init"]);
         assert.equal(human.status, 0, human.stderr);
-        assert.match(human.stdout, /^Initialized codex-switch tool home\.$/m);
+        assert.match(human.stdout, /^Initialized agent-provider-switch tool home\.$/m);
         assert.match(human.stdout, /^tool home: /m);
         // The renderer used to print an empty tool home because the payload never carried it.
         assert.doesNotMatch(human.stdout, /^tool home: $/m);

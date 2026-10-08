@@ -1,21 +1,21 @@
 import * as fs from "node:fs";
 import { cliError } from "../domain/errors";
-import { CodexSwitchConfig } from "./codex-paths";
+import { AgentProviderSwitchConfig } from "./codex-paths";
 import { ensureDir, writeTextFileAtomic } from "./fs-utils";
 
 /**
- * Reads the optional tool-level codex-switch config file when present.
+ * Reads the optional tool-level agent-provider-switch config file when present.
  */
-export function readToolConfigIfExists(toolConfigPath: string): CodexSwitchConfig | null {
+export function readToolConfigIfExists(toolConfigPath: string): AgentProviderSwitchConfig | null {
   if (!fs.existsSync(toolConfigPath)) {
     return null;
   }
 
   try {
-    const parsed = JSON.parse(fs.readFileSync(toolConfigPath, "utf8")) as CodexSwitchConfig;
+    const parsed = JSON.parse(fs.readFileSync(toolConfigPath, "utf8")) as AgentProviderSwitchConfig;
     return validateToolConfig(parsed, toolConfigPath);
   } catch (error: unknown) {
-    throw cliError("INVALID_CONFIG", "codex-switch.json is invalid.", {
+    throw cliError("INVALID_CONFIG", "agent-provider-switch.json is invalid.", {
       file: toolConfigPath,
       cause: error instanceof Error ? error.message : String(error),
     });
@@ -27,7 +27,7 @@ export function readToolConfigIfExists(toolConfigPath: string): CodexSwitchConfi
  */
 export function ensureToolConfig(toolConfigPath: string, version: string, defaultCodexDir: string): {
   created: boolean;
-  config: CodexSwitchConfig;
+  config: AgentProviderSwitchConfig;
 } {
   const current = readToolConfigIfExists(toolConfigPath);
   if (current) {
@@ -37,7 +37,7 @@ export function ensureToolConfig(toolConfigPath: string, version: string, defaul
     };
   }
 
-  const next: CodexSwitchConfig = {
+  const next: AgentProviderSwitchConfig = {
     version,
   };
   if (defaultCodexDir) {
@@ -54,24 +54,24 @@ export function ensureToolConfig(toolConfigPath: string, version: string, defaul
 /**
  * Writes the tool-level config file with a normalized shape.
  */
-export function writeToolConfig(toolConfigPath: string, config: CodexSwitchConfig): void {
+export function writeToolConfig(toolConfigPath: string, config: AgentProviderSwitchConfig): void {
   const normalized = validateToolConfig(config, toolConfigPath);
   writeTextFileAtomic(toolConfigPath, `${JSON.stringify(normalized, null, 2)}\n`);
 }
 
-function validateToolConfig(config: CodexSwitchConfig, toolConfigPath: string): CodexSwitchConfig {
+function validateToolConfig(config: AgentProviderSwitchConfig, toolConfigPath: string): AgentProviderSwitchConfig {
   if (!config || typeof config !== "object") {
-    throw cliError("INVALID_CONFIG", "codex-switch.json must contain a JSON object.", {
+    throw cliError("INVALID_CONFIG", "agent-provider-switch.json must contain a JSON object.", {
       file: toolConfigPath,
     });
   }
   if (typeof config.version !== "string" || config.version.trim() === "") {
-    throw cliError("INVALID_CONFIG", "codex-switch.json requires a non-empty version field.", {
+    throw cliError("INVALID_CONFIG", "agent-provider-switch.json requires a non-empty version field.", {
       file: toolConfigPath,
     });
   }
   if (config.defaultCodexDir !== undefined && typeof config.defaultCodexDir !== "string") {
-    throw cliError("INVALID_CONFIG", "codex-switch.json.defaultCodexDir must be a string when provided.", {
+    throw cliError("INVALID_CONFIG", "agent-provider-switch.json.defaultCodexDir must be a string when provided.", {
       file: toolConfigPath,
     });
   }

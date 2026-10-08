@@ -39,7 +39,7 @@ export async function switchProvider(args: {
     throw cliError("MANAGED_PROFILE_FIELDS_MISSING", `Provider "${args.providerName}" has no model to switch with.`, {
       provider: args.providerName,
       modelProvider: provider.profile,
-      suggestion: "Run `codexs edit <provider> --model <name>` or `codexs add <provider> --model <name>`.",
+      suggestion: "Run `aps edit <provider> --model <name>` or `aps add <provider> --model <name>`.",
     });
   }
 
@@ -59,7 +59,7 @@ export async function switchProvider(args: {
         throw cliError("MANAGED_PROFILE_FIELDS_MISSING", `Provider "${args.providerName}" requires base_url before switching.`, {
           provider: args.providerName,
           modelProvider: provider.profile,
-          suggestion: "Run `codexs edit <provider> --base-url <url>`.",
+          suggestion: "Run `aps edit <provider> --base-url <url>`.",
         });
       }
       const configPlan = createConfigMutationPlan(document, {

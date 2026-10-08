@@ -83,7 +83,7 @@ module.exports = {
         const doctor = runOk(sandbox, ["doctor", "--json"]);
         const stale = doctor.json.data.issues.find((issue) => issue.code === "LOCK_STALE");
         assert.ok(stale, "a dead lock must be reported as stale");
-        assert.match(stale.remedy, /codexs unlock/);
+        assert.match(stale.remedy, /aps unlock/);
 
         const cleared = runOk(sandbox, ["unlock", "--json"]);
         assert.equal(cleared.json.data.removed, true);
@@ -93,7 +93,7 @@ module.exports = {
         assert.equal(fs.existsSync(lockPathFor(sandbox)), false);
 
         const humanAbsent = runCli(sandbox, ["unlock"]);
-        assert.match(humanAbsent.stdout, /^No codex-switch lock to clear \(no lock file was present\)\.$/m);
+        assert.match(humanAbsent.stdout, /^No agent-provider-switch lock to clear \(no lock file was present\)\.$/m);
 
         // A pid that is genuinely running is refused, because clearing it would let a second
         // operation into the critical section the lock is holding. The runner's own process is the
@@ -108,7 +108,7 @@ module.exports = {
         const refused = runFail(sandbox, ["unlock", "--json"]);
         assert.equal(refused.json.error.code, "LOCK_CONFLICT");
         assert.equal(refused.json.error.details.activePid, process.pid);
-        assert.match(refused.json.error.details.remedy, /codexs unlock --force/);
+        assert.match(refused.json.error.details.remedy, /aps unlock --force/);
         assert.ok(fs.existsSync(lockPathFor(sandbox)), "a refused unlock must leave the lock in place");
 
         // ...and --force is the documented escape hatch for a recycled pid.
@@ -118,7 +118,7 @@ module.exports = {
         assert.match(forced.json.data.reason, /--force was given/);
 
         const humanForced = runCli(sandbox, ["unlock"]);
-        assert.match(humanForced.stdout, /^No codex-switch lock to clear/m);
+        assert.match(humanForced.stdout, /^No agent-provider-switch lock to clear/m);
       },
     },
     {
@@ -297,16 +297,16 @@ module.exports = {
           `expected a projection mismatch, got ${JSON.stringify(drift.json.data.issues.map((issue) => issue.code))}`
         );
         const driftHuman = runCli(drifted, ["doctor"], { env: withoutCodex });
-        assert.match(driftHuman.stdout, /^  next step: rerun `codexs edit <provider> --base-url <url>`/m);
+        assert.match(driftHuman.stdout, /^  next step: rerun `aps edit <provider> --base-url <url>`/m);
 
         // The lock arms of the same switch, which have their own next steps.
         writeLock(drifted, { pid: DEAD_PID, operation: "switch", createdAt: new Date().toISOString() });
         const staleHuman = runCli(drifted, ["doctor"], { env: withoutCodex });
-        assert.match(staleHuman.stdout, /^  next step: the next write command clears it automatically, or run `codexs unlock`$/m);
+        assert.match(staleHuman.stdout, /^  next step: the next write command clears it automatically, or run `aps unlock`$/m);
 
         writeLock(drifted, { pid: process.pid, operation: "switch", createdAt: new Date().toISOString() });
         const occupiedHuman = runCli(drifted, ["doctor"], { env: withoutCodex });
-        assert.match(occupiedHuman.stdout, /^  next step: wait for the running operation, or run `codexs unlock --force`/m);
+        assert.match(occupiedHuman.stdout, /^  next step: wait for the running operation, or run `aps unlock --force`/m);
         assert.match(occupiedHuman.stdout, /^- LOCK_OCCUPIED: /m);
 
         // Legacy wiring shares one next step across all three of its codes.
@@ -315,7 +315,7 @@ module.exports = {
         addProvider(legacy, "freemodel");
         const legacyHuman = runCli(legacy, ["doctor"], { env: withoutCodex });
         assert.match(legacyHuman.stdout, /^- LEGACY_PROFILE_SELECTOR: /m);
-        assert.match(legacyHuman.stdout, /^  next step: rerun `codexs switch <provider>` to project/m);
+        assert.match(legacyHuman.stdout, /^  next step: rerun `aps switch <provider>` to project/m);
       },
     },
   ],

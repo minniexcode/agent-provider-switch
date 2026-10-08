@@ -106,7 +106,7 @@ module.exports = {
         assert.equal(result.status, 0, `a stale lock must not block the next write: ${result.stderr}`);
         assert.equal(result.payload.ok, true);
         assert.ok(
-          result.payload.warnings.some((warning) => warning.includes("stale codex-switch lock")),
+          result.payload.warnings.some((warning) => warning.includes("stale agent-provider-switch lock")),
           `expected a takeover warning, got ${JSON.stringify(result.payload.warnings)}`
         );
         assert.equal(fs.existsSync(lockPath), false, "the lock must be released once the mutation finishes");
@@ -116,7 +116,7 @@ module.exports = {
       name: "releaseLock removes only a record this process owns",
       run() {
         const { acquireLock, releaseLock } = require("../dist/storage/lock-repo.js");
-        const toolHomeDir = makeTempDir("codex-switch-lock-");
+        const toolHomeDir = makeTempDir("agent-provider-switch-lock-");
         const lockPath = lockPathFor(toolHomeDir);
 
         acquireLock(lockPath, "owned-by-this-process");
@@ -225,7 +225,7 @@ module.exports = {
         const result = await addProvider(toolHomeDir, codexDir, "after-truncation");
         assert.equal(result.status, 0, `an unreadable lock must not block writes: ${result.stderr}`);
         assert.ok(
-          result.payload.warnings.some((warning) => warning.includes("unreadable codex-switch lock")),
+          result.payload.warnings.some((warning) => warning.includes("unreadable agent-provider-switch lock")),
           `expected an unreadable-record warning, got ${JSON.stringify(result.payload.warnings)}`
         );
       },
@@ -283,7 +283,7 @@ module.exports = {
       name: "a record without a hostname reads as local, for backward compatibility",
       run() {
         const { inspectLock } = require("../dist/storage/lock-repo.js");
-        const toolHomeDir = makeTempDir("codex-switch-lock-");
+        const toolHomeDir = makeTempDir("agent-provider-switch-lock-");
         const lockPath = lockPathFor(toolHomeDir);
 
         // Records written before `hostname` existed have no such field. Reading their absence as

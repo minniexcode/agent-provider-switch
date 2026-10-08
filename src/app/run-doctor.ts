@@ -101,8 +101,8 @@ export async function runDoctor(args: {
       // Every write command fails while this is present, which is why it belongs in doctor
       // rather than only in the lock error the user would otherwise hit by surprise.
       remedy: recoverable
-        ? "The next write command clears it automatically, or run `codexs unlock`."
-        : "Run `codexs unlock --force` only if no codex-switch operation is actually running.",
+        ? "The next write command clears it automatically, or run `aps unlock`."
+        : "Run `aps unlock --force` only if no agent-provider-switch operation is actually running.",
     });
   }
 

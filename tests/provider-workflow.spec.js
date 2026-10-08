@@ -126,7 +126,7 @@ module.exports = {
         assert.ok(issue, `expected LOCK_STALE, got ${JSON.stringify(issueCodes(result.payload))}`);
         assert.equal(issue.activeOperation, "switch");
         assert.equal(issue.lockStatus, "dead");
-        assert.match(issue.remedy, /codexs unlock/);
+        assert.match(issue.remedy, /aps unlock/);
 
         // A live owner is not recoverable. Every write command fails while it is present, which
         // is why doctor has to surface it rather than leaving the user to hit the error blind.

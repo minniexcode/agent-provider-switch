@@ -50,7 +50,7 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
   } catch (error: unknown) {
     // `parseArgs()` threw, so there is no parsed result to read `--json` from. Reading the flag
     // off the raw argv is the only way this path can honour the envelope contract — without it
-    // `codexs --json --codex-dir` would print a plain-text error, which is precisely the case
+    // `aps --json --codex-dir` would print a plain-text error, which is precisely the case
     // the envelope exists to serve. "help" is the existing stand-in for "no command resolved";
     // the unknown-help-topic failure below uses the same one.
     const json = argv.includes("--json");
@@ -90,7 +90,7 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
   if (!parsed.command) {
     const unresolved = parsed.positionals[0] ?? null;
 
-    // Bucket 2: a recognized command-group root with no subcommand, such as `codexs config`.
+    // Bucket 2: a recognized command-group root with no subcommand, such as `aps config`.
     // The help-topic predicate is the correct one here and the command-name predicate is not:
     // the latter is keyed on ids and joined tokens, so bare `config` is absent from it while it
     // is a help topic. `buildHelpText` renders the group's subcommands for it.

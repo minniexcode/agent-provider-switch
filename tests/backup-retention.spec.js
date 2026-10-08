@@ -111,7 +111,7 @@ module.exports = {
       name: "two backups created at the same instant get distinct directories",
       run() {
         const { createBackup } = require("../dist/storage/backup-repo.js");
-        const root = makeTempDir("codex-switch-retention-");
+        const root = makeTempDir("agent-provider-switch-retention-");
         const backupsDir = path.join(root, "backups");
         const sourceFile = path.join(root, "config.toml");
         fs.writeFileSync(sourceFile, 'model = "gpt-5"\n', "utf8");
@@ -289,7 +289,7 @@ module.exports = {
       name: "a rolled-back mutation leaves no backup directory and no backup path",
       run() {
         const { runMutation } = require("../dist/app/run-mutation.js");
-        const root = makeTempDir("codex-switch-mutation-");
+        const root = makeTempDir("agent-provider-switch-mutation-");
         const codexDir = path.join(root, "codex");
         fs.mkdirSync(codexDir, { recursive: true });
         const configPath = path.join(codexDir, "config.toml");
@@ -331,7 +331,7 @@ module.exports = {
       name: "a failed rollback keeps the backup and reports where it is",
       run() {
         const { runMutation } = require("../dist/app/run-mutation.js");
-        const root = makeTempDir("codex-switch-mutation-");
+        const root = makeTempDir("agent-provider-switch-mutation-");
         const codexDir = path.join(root, "codex");
         fs.mkdirSync(codexDir, { recursive: true });
         const configPath = path.join(codexDir, "config.toml");

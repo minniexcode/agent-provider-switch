@@ -60,7 +60,7 @@ export async function handleClaudeCommand(
   switch (ctx.command) {
     case "add": {
       // `--claude` is a boolean flag, so it never claims the following token: the name is a
-      // positional in every ordering, including `codexs --claude add <name>`.
+      // positional in every ordering, including `aps --claude add <name>`.
       let providerName: string | null = parsed.positionals[0] ?? null;
       const fromFile = getSingleOption(parsed.commandOptions, "--from-file");
       const note = getSingleOption(parsed.commandOptions, "--note");
@@ -68,7 +68,7 @@ export async function handleClaudeCommand(
 
       if (!providerName) {
         if (ctx.options.json || !runtime.isInteractive()) {
-          throw cliError("INVALID_ARGUMENT", "Claude add requires a provider name. Usage: codexs add --claude <name> --from-file <path>");
+          throw cliError("INVALID_ARGUMENT", "Claude add requires a provider name. Usage: aps add --claude <name> --from-file <path>");
         }
         const inquirer = await import("inquirer");
         const answer = await inquirer.default.prompt([{
@@ -124,7 +124,7 @@ export async function handleClaudeCommand(
 
     case "switch": {
       // `--claude` is a boolean flag, so it never claims the following token: the name is a
-      // positional in every ordering, including `codexs --claude add <name>`.
+      // positional in every ordering, including `aps --claude add <name>`.
       let providerName: string | null = parsed.positionals[0] ?? null;
       if (!providerName && canPrompt(runtime, ctx.options.json)) {
         providerName = await promptForClaudeProviderSelection(
@@ -156,7 +156,7 @@ export async function handleClaudeCommand(
 
     case "show": {
       // `--claude` is a boolean flag, so it never claims the following token: the name is a
-      // positional in every ordering, including `codexs --claude add <name>`.
+      // positional in every ordering, including `aps --claude add <name>`.
       let providerName: string | null = parsed.positionals[0] ?? null;
       if (!providerName && canPrompt(runtime, ctx.options.json)) {
         providerName = await promptForClaudeProviderSelection(
@@ -185,7 +185,7 @@ export async function handleClaudeCommand(
 
     case "remove": {
       // `--claude` is a boolean flag, so it never claims the following token: the name is a
-      // positional in every ordering, including `codexs --claude add <name>`.
+      // positional in every ordering, including `aps --claude add <name>`.
       let providerName: string | null = parsed.positionals[0] ?? null;
       const force = hasFlag(parsed.commandOptions, "--force");
 
@@ -234,7 +234,7 @@ async function promptForClaudeProviderSelection(
   const file = readClaudeProvidersFileIfExists(claudeProvidersPath);
   const names = Object.keys(file.providers).sort();
   if (names.length === 0) {
-    throw cliError("CLAUDE_PROVIDERS_NOT_FOUND", "No Claude providers registered. Run `codexs add --claude` first.");
+    throw cliError("CLAUDE_PROVIDERS_NOT_FOUND", "No Claude providers registered. Run `aps add --claude` first.");
   }
 
   const currentSettings = readClaudeSettings(claudeSettingsPath);

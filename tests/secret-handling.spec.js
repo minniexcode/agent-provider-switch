@@ -31,7 +31,7 @@ async function withClaudeToolHome(run) {
 
   const previousClaudeDir = process.env.APS_CLAUDE_DIR;
   try {
-    return await withTempDir("codex-switch-claude-dir-", async (claudeDir) => {
+    return await withTempDir("agent-provider-switch-claude-dir-", async (claudeDir) => {
       // Point the Claude target at a throwaway directory so `current`/`list` cannot
       // read or write the real ~/.claude during the run.
       process.env.APS_CLAUDE_DIR = claudeDir;
@@ -221,7 +221,7 @@ module.exports = {
           "utf8"
         );
 
-        await withTempDir("codex-switch-export-", async (tempDir) => {
+        await withTempDir("agent-provider-switch-export-", async (tempDir) => {
           const target = path.join(tempDir, "exported.json");
           const result = await runJsonCli({ toolHomeDir, args: ["export", target, "--json"] });
           assert.equal(result.payload.ok, true);
@@ -238,7 +238,7 @@ module.exports = {
       name: "writeTextFileAtomic never leaves the destination missing",
       async run() {
         const { writeTextFileAtomic } = require("../dist/storage/fs-utils.js");
-        await withTempDir("codex-switch-atomic-", async (tempDir) => {
+        await withTempDir("agent-provider-switch-atomic-", async (tempDir) => {
           const target = path.join(tempDir, "managed.json");
           writeTextFileAtomic(target, '{"generation":1}\n');
           assert.equal(fs.readFileSync(target, "utf8"), '{"generation":1}\n');
@@ -269,7 +269,7 @@ module.exports = {
       async run() {
         const { createBackup, restoreManifest } = require("../dist/storage/backup-repo.js");
 
-        await withTempDir("codex-switch-rollback-", async (tempDir) => {
+        await withTempDir("agent-provider-switch-rollback-", async (tempDir) => {
           const allowedRoot = path.join(tempDir, "tool-home");
           const outsideRoot = path.join(tempDir, "outside");
           fs.mkdirSync(allowedRoot, { recursive: true });
@@ -309,7 +309,7 @@ module.exports = {
         const { writeClaudeProvidersFile } = require("../dist/storage/claude-providers-repo.js");
         const { writeOpenAiApiKeyAuth } = require("../dist/storage/auth-repo.js");
 
-        await withTempDir("codex-switch-modes-", async (tempDir) => {
+        await withTempDir("agent-provider-switch-modes-", async (tempDir) => {
           const nestedDir = path.join(tempDir, "created", "deep");
           const claudeProvidersPath = path.join(nestedDir, "claude-providers.json");
           writeClaudeProvidersFile(claudeProvidersPath, { providers: { [PROVIDER_NAME]: claudeRecord() } });

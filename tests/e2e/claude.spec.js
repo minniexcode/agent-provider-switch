@@ -56,7 +56,7 @@ module.exports = {
         const empty = runOk(sandbox, ["list", "--claude", "--json"]);
         assert.equal(empty.json.data.count, 0);
         const emptyHuman = runCli(sandbox, ["list", "--claude"]);
-        assert.match(emptyHuman.stdout, /^No Claude providers configured\. Run `codexs add --claude/m);
+        assert.match(emptyHuman.stdout, /^No Claude providers configured\. Run `aps add --claude/m);
 
         const noSettings = runOk(sandbox, ["current", "--claude", "--json"]);
         assert.equal(noSettings.json.data.status, "no-settings");
@@ -180,7 +180,7 @@ module.exports = {
         runOk(sandbox, ["add", "--claude", "copilot", "--from-file", file, "--json"]);
         const duplicate = runFail(sandbox, ["add", "--claude", "copilot", "--from-file", file, "--json"]);
         assert.equal(duplicate.json.error.code, "CLAUDE_PROVIDER_ALREADY_EXISTS");
-        assert.match(duplicate.json.error.details.suggestion, /codexs remove --claude/);
+        assert.match(duplicate.json.error.details.suggestion, /aps remove --claude/);
         // The refusal must not have written anything, so the registry still holds exactly one.
         const registry = JSON.parse(fs.readFileSync(path.join(sandbox.home, "claude-providers.json"), "utf8"));
         assert.deepEqual(Object.keys(registry.providers), ["copilot"]);

@@ -11,12 +11,12 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "Show the current route summary and legacy profile view.",
-    usage: ["codexs config show [profile] [--json] [--codex-dir <path>]"],
+    usage: ["aps config show [profile] [--json] [--codex-dir <path>]"],
     details: [
       "Returns current top-level model/model_provider together with recognizable legacy profile sections.",
       "Passing [profile] narrows the legacy profile view to one section while preserving the same shape.",
     ],
-    examples: ["codexs config show", "codexs config show packycode --json"],
+    examples: ["aps config show", "aps config show packycode --json"],
   },
   {
     id: "config-list-profiles",
@@ -24,28 +24,28 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "List recognizable legacy config profiles with managed-state hints.",
-    usage: ["codexs config list-profiles [--json] [--codex-dir <path>]"],
+    usage: ["aps config list-profiles [--json] [--codex-dir <path>]"],
     details: [
       "Lists managed, unmanaged, and orphaned legacy profile sections in one stable view.",
       "Use config show for the current route summary and richer single-profile details.",
     ],
-    examples: ["codexs config list-profiles", "codexs config list-profiles --json"],
+    examples: ["aps config list-profiles", "aps config list-profiles --json"],
   },
   {
     id: "init",
     tokens: ["init"],
     handler: handleRegisteredCommand,
     group: "write",
-    summary: "Initialize the codex-switch tool home for the primary workflow.",
-    usage: ["codexs init [--json] [--codex-dir <path>]"],
+    summary: "Initialize the agent-provider-switch tool home for the primary workflow.",
+    usage: ["aps init [--json] [--codex-dir <path>]"],
     details: [
-      "Creates codex-switch.json and providers.json under the tool home when they do not exist yet.",
+      "Creates agent-provider-switch.json and providers.json under the tool home when they do not exist yet.",
       "Does not create or validate config.toml, auth.json, or the target Codex directory.",
-      "When --codex-dir is passed explicitly and codex-switch.json does not exist yet, init persists it as defaultCodexDir.",
+      "When --codex-dir is passed explicitly and agent-provider-switch.json does not exist yet, init persists it as defaultCodexDir.",
       "Otherwise init stays scoped to tool-home state and does not persist fallback Codex directory resolution.",
       "Use init first for fresh provider-management setups.",
     ],
-    examples: ["codexs init", "codexs init --json --codex-dir ~/.codex"],
+    examples: ["aps init", "aps init --json --codex-dir ~/.codex"],
   },
   {
     id: "migrate",
@@ -53,7 +53,7 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Adopt existing Codex runtime profiles into managed providers.json state.",
-    usage: ["codexs migrate [--json] [--codex-dir <path>] [--merge|--overwrite]"],
+    usage: ["aps migrate [--json] [--codex-dir <path>] [--merge|--overwrite]"],
     booleanFlags: ["--merge", "--overwrite"],
     details: [
       "Reads legacy config.toml profiles, collects complete provider records, then writes providers.json under managed backup flow.",
@@ -62,7 +62,7 @@ export const COMMANDS: CommandDefinition[] = [
       "Non-TTY and --json runs still fail fast because migrate profile selection and provider details remain interactive in this release.",
       "Treat migrate as an advanced adopt helper for existing runtime state, not the default first step for fresh installs.",
     ],
-    examples: ["codexs migrate", "codexs migrate --overwrite --json --codex-dir ~/.codex"],
+    examples: ["aps migrate", "aps migrate --overwrite --json --codex-dir ~/.codex"],
   },
   {
     id: "setup",
@@ -70,13 +70,13 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Deprecated. Kept only to point callers to init or migrate.",
-    usage: ["codexs setup"],
+    usage: ["aps setup"],
     details: [
       "setup no longer performs initialization or migration work.",
       "Use init for the primary fresh-install workflow.",
       "Use migrate only when adopting from existing legacy config.toml profiles.",
     ],
-    examples: ["codexs help init", "codexs help migrate"],
+    examples: ["aps help init", "aps help migrate"],
   },
   {
     id: "list",
@@ -84,7 +84,7 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "List managed providers with model-provider routing and current-state hints.",
-    usage: ["codexs list [--claude] [--json] [--codex-dir <path>]"],
+    usage: ["aps list [--claude] [--json] [--codex-dir <path>]"],
     booleanFlags: ["--claude"],
     details: [
       "Reads providers.json and prints provider-to-model-provider mappings.",
@@ -92,7 +92,7 @@ export const COMMANDS: CommandDefinition[] = [
       "Use --claude to list Claude Code provider profiles instead of Codex providers.",
       "Use --json for machine-readable automation output.",
     ],
-    examples: ["codexs list", "codexs list --claude", "codexs list --json"],
+    examples: ["aps list", "aps list --claude", "aps list --json"],
   },
   {
     id: "show",
@@ -100,7 +100,7 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "Show one provider record from providers.json.",
-    usage: ["codexs show <provider> [--claude] [--json] [--reveal] [--codex-dir <path>]"],
+    usage: ["aps show <provider> [--claude] [--json] [--reveal] [--codex-dir <path>]"],
     booleanFlags: ["--claude"],
     details: [
       "Human-readable output masks apiKey by default.",
@@ -109,7 +109,7 @@ export const COMMANDS: CommandDefinition[] = [
       "Use --claude to show a Claude Code provider profile.",
       "Claude profiles mask secret env values and withhold the raw settings blob; --reveal prints both.",
     ],
-    examples: ["codexs show packycode", "codexs show --claude copilot", "codexs show packycode --json"],
+    examples: ["aps show packycode", "aps show --claude copilot", "aps show packycode --json"],
   },
   {
     id: "current",
@@ -117,10 +117,10 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "Show the active top-level model/model_provider route from config.toml.",
-    usage: ["codexs current [--claude] [--json] [--codex-dir <path>]"],
+    usage: ["aps current [--claude] [--json] [--codex-dir <path>]"],
     booleanFlags: ["--claude"],
     details: ["Reads the currently active top-level model and model_provider.", "Use --claude to detect the active Claude Code profile.", "Fails when config.toml is missing or has no top-level model_provider."],
-    examples: ["codexs current", "codexs current --claude", "codexs current --json"],
+    examples: ["aps current", "aps current --claude", "aps current --json"],
   },
   {
     id: "status",
@@ -128,14 +128,14 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "Show target Codex directory, managed route, and health status.",
-    usage: ["codexs status [--json] [--codex-dir <path>]"],
+    usage: ["aps status [--json] [--codex-dir <path>]"],
     details: [
       "Reports the target Codex directory, tool-home root, current model, current model_provider, and whether the live route is mapped.",
       "Surfaces dual-path config consistency signals without mutating any files.",
       "Organizes the human-readable view around current state, health impact, and next step.",
       "Use doctor for deeper diagnostics.",
     ],
-    examples: ["codexs status", "codexs status --json --codex-dir ./.tmp-codex"],
+    examples: ["aps status", "aps status --json --codex-dir ./.tmp-codex"],
   },
   {
     id: "edit",
@@ -144,8 +144,8 @@ export const COMMANDS: CommandDefinition[] = [
     group: "write",
     summary: "Update fields on a single provider record.",
     usage: [
-      "codexs edit <provider> [--profile <model-provider-id>] [--api-key <key>] [--base-url <url>] [--model <name>] [--note <text>] [--tag <tag> ...] [--create-profile] [--json] [--codex-dir <path>]",
-      "codexs edit <provider> --profile <model-provider-id> --model <name> --base-url <url>",
+      "aps edit <provider> [--profile <model-provider-id>] [--api-key <key>] [--base-url <url>] [--model <name>] [--note <text>] [--tag <tag> ...] [--create-profile] [--json] [--codex-dir <path>]",
+      "aps edit <provider> --profile <model-provider-id> --model <name> --base-url <url>",
     ],
     booleanFlags: ["--create-profile"],
     details: [
@@ -157,7 +157,7 @@ export const COMMANDS: CommandDefinition[] = [
       "Use --create-profile to also write the legacy profiles section for the bound model_provider id.",
       "Backs up providers.json and config.toml before writing.",
     ],
-    examples: ["codexs edit packycode --note primary", "codexs edit packycode --tag daily --tag paid --json"],
+    examples: ["aps edit packycode --note primary", "aps edit packycode --tag daily --tag paid --json"],
   },
   {
     id: "add",
@@ -166,9 +166,9 @@ export const COMMANDS: CommandDefinition[] = [
     group: "write",
     summary: "Add a managed provider.",
     usage: [
-      "codexs add <provider> --profile <model-provider-id> --model <name> --api-key <key> [--base-url <url>] [--note <text>] [--tag <tag> ...]",
-      "codexs add --claude <name> --from-file <settings.json> [--note <text>] [--tag <tag> ...]",
-      "codexs add [--profile <model-provider-id>] [--model <name>] [--api-key <key>] [--base-url <url>] [--note <text>] [--tag <tag> ...] [--create-profile]",
+      "aps add <provider> --profile <model-provider-id> --model <name> --api-key <key> [--base-url <url>] [--note <text>] [--tag <tag> ...]",
+      "aps add --claude <name> --from-file <settings.json> [--note <text>] [--tag <tag> ...]",
+      "aps add [--profile <model-provider-id>] [--model <name>] [--api-key <key>] [--base-url <url>] [--note <text>] [--tag <tag> ...] [--create-profile]",
     ],
     booleanFlags: ["--claude", "--create-profile"],
     details: [
@@ -182,9 +182,9 @@ export const COMMANDS: CommandDefinition[] = [
       "Use --claude to add a Claude Code provider profile from an existing settings file.",
     ],
     examples: [
-      "codexs add packycode --profile packycode --model gpt-5 --api-key sk-xxx --base-url https://api.example/v1",
-      "codexs add --claude copilot --from-file ~/.claude/settings-copilot.json",
-      "codexs add",
+      "aps add packycode --profile packycode --model gpt-5 --api-key sk-xxx --base-url https://api.example/v1",
+      "aps add --claude copilot --from-file ~/.claude/settings-copilot.json",
+      "aps add",
     ],
   },
   {
@@ -193,7 +193,7 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Switch the active runtime to a managed provider.",
-    usage: ["codexs switch <provider> [--claude] [--json] [--codex-dir <path>]"],
+    usage: ["aps switch <provider> [--claude] [--json] [--codex-dir <path>]"],
     booleanFlags: ["--claude"],
     details: [
       "When <provider> is omitted in a TTY, an interactive provider selector is shown.",
@@ -203,7 +203,7 @@ export const COMMANDS: CommandDefinition[] = [
       "Backs up config.toml and auth.json and rolls back on failure.",
       "Use --claude to switch Claude Code's settings.json to a registered Claude provider profile.",
     ],
-    examples: ["codexs switch freemodel", "codexs switch --claude copilot", "codexs switch packycode --json"],
+    examples: ["aps switch freemodel", "aps switch --claude copilot", "aps switch packycode --json"],
   },
   {
     id: "remove",
@@ -211,7 +211,7 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Remove a provider from providers.json.",
-    usage: ["codexs remove <provider> [--claude] [--force] [--switch-to <provider>] [--json] [--codex-dir <path>]"],
+    usage: ["aps remove <provider> [--claude] [--force] [--switch-to <provider>] [--json] [--codex-dir <path>]"],
     booleanFlags: ["--claude", "--force"],
     details: [
       "TTY mode can select a missing provider interactively and always asks for deletion confirmation.",
@@ -221,7 +221,7 @@ export const COMMANDS: CommandDefinition[] = [
       "Backs up providers.json and config.toml before removing the record.",
       "Use --claude to remove a Claude Code provider profile.",
     ],
-    examples: ["codexs remove freemodel", "codexs remove --claude copilot --force", "codexs remove freemodel --force --json"],
+    examples: ["aps remove freemodel", "aps remove --claude copilot --force", "aps remove freemodel --force --json"],
   },
   {
     id: "import",
@@ -229,14 +229,14 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Replace providers.json with an external JSON file.",
-    usage: ["codexs import <file> [--merge] [--json] [--codex-dir <path>]"],
+    usage: ["aps import <file> [--merge] [--json] [--codex-dir <path>]"],
     booleanFlags: ["--merge"],
     details: [
       "The file path is always explicit; there is no path wizard in this release.",
       "TTY mode asks for confirmation before replacing or merging into the current providers registry.",
       "Non-TTY and --json runs stay non-interactive and validate the file before writing.",
     ],
-    examples: ["codexs import ./providers.json", "codexs import ./providers.json --merge --json"],
+    examples: ["aps import ./providers.json", "aps import ./providers.json --merge --json"],
   },
   {
     id: "export",
@@ -244,14 +244,14 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Export the current providers.json to another file.",
-    usage: ["codexs export <file> [--force] [--json] [--codex-dir <path>]"],
+    usage: ["aps export <file> [--force] [--json] [--codex-dir <path>]"],
     booleanFlags: ["--force"],
     details: [
       "The file path is always explicit; there is no path wizard in this release.",
       "TTY mode asks before overwriting an existing target when --force is not supplied.",
       "Non-TTY and --json automation require --force to overwrite an existing file.",
     ],
-    examples: ["codexs export ./providers-backup.json", "codexs export ./providers-backup.json --force"],
+    examples: ["aps export ./providers-backup.json", "aps export ./providers-backup.json --force"],
   },
   {
     id: "backups-list",
@@ -259,12 +259,12 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "recovery",
     summary: "List historical backup entries.",
-    usage: ["codexs backups list [--json] [--codex-dir <path>]"],
+    usage: ["aps backups list [--json] [--codex-dir <path>]"],
     details: [
       "Enumerates backups/ manifests and returns them newest first.",
       "Corrupt backup manifests are skipped with warnings instead of failing the whole command.",
     ],
-    examples: ["codexs backups list", "codexs backups list --json"],
+    examples: ["aps backups list", "aps backups list --json"],
   },
   {
     id: "backups-prune",
@@ -272,14 +272,14 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Delete old backup directories beyond the retention count.",
-    usage: ["codexs backups prune [--keep <count>] [--json] [--codex-dir <path>]"],
+    usage: ["aps backups prune [--keep <count>] [--json] [--codex-dir <path>]"],
     details: [
       "Keeps the newest backups and deletes the rest, defaulting to 20.",
       "A directory that any surviving manifest still references is never deleted, because rollback resolves through it.",
       "Directories whose manifest is missing or unreadable are reported rather than deleted.",
       "Retention also runs automatically after every successful mutation.",
     ],
-    examples: ["codexs backups prune", "codexs backups prune --keep 5 --json"],
+    examples: ["aps backups prune", "aps backups prune --keep 5 --json"],
   },
   {
     id: "doctor",
@@ -287,12 +287,12 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Run issue-first diagnostics across tool-home and target-runtime state.",
-    usage: ["codexs doctor [--json] [--codex-dir <path>]"],
+    usage: ["aps doctor [--json] [--codex-dir <path>]"],
     details: [
       "Checks the expected config files, provider/model-provider consistency, and Codex CLI availability.",
       "Returns structured issues so users and AI agents can act on them.",
     ],
-    examples: ["codexs doctor", "codexs doctor --json"],
+    examples: ["aps doctor", "aps doctor --json"],
   },
   {
     id: "unlock",
@@ -300,7 +300,7 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Clear a lock left behind by a process that no longer exists.",
-    usage: ["codexs unlock [--force] [--json]"],
+    usage: ["aps unlock [--force] [--json]"],
     booleanFlags: ["--force"],
     details: [
       "Clears the lock only when the recorded owner is provably gone; a live owner is refused.",
@@ -308,7 +308,7 @@ export const COMMANDS: CommandDefinition[] = [
       "Succeeds as a no-op when no lock is present.",
       "Runs without a Codex directory, because the lock lives in the tool home.",
     ],
-    examples: ["codexs unlock", "codexs unlock --force --json"],
+    examples: ["aps unlock", "aps unlock --force --json"],
   },
   {
     id: "rollback",
@@ -316,13 +316,13 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Restore the latest managed backup or a specific backup id.",
-    usage: ["codexs rollback [<backup-id>] [--json] [--codex-dir <path>]"],
+    usage: ["aps rollback [<backup-id>] [--json] [--codex-dir <path>]"],
     details: [
       "TTY mode previews the target backup path and affected files, then asks for confirmation.",
       "Non-TTY and --json runs stay non-interactive and execute immediately.",
       "Use after a failed or undesired managed mutation.",
     ],
-    examples: ["codexs rollback", "codexs rollback 20260511-221457123-switch --json"],
+    examples: ["aps rollback", "aps rollback 20260511-221457123-switch --json"],
   },
 ];
 

@@ -29,7 +29,7 @@ export function unlockLock(args: { lockPath: string; force: boolean }): CommandR
   }
 
   if (!args.force && !isRecoverableLock(state)) {
-    throw cliError("LOCK_CONFLICT", "The codex-switch lock is held by a process that is still running.", {
+    throw cliError("LOCK_CONFLICT", "The agent-provider-switch lock is held by a process that is still running.", {
       file: args.lockPath,
       owner: describeLockOwner(state),
       activePid: state.record?.pid ?? null,
@@ -42,8 +42,8 @@ export function unlockLock(args: { lockPath: string; force: boolean }): CommandR
       note:
         state.status === "foreign"
           ? "This lock was created on a different host, so its owner cannot be verified here."
-          : "If the recorded process is a recycled pid, no codex-switch operation is actually running.",
-      remedy: "Run `codexs unlock --force` to clear it anyway.",
+          : "If the recorded process is a recycled pid, no agent-provider-switch operation is actually running.",
+      remedy: "Run `aps unlock --force` to clear it anyway.",
     });
   }
 

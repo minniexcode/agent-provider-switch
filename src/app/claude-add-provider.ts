@@ -58,7 +58,7 @@ export async function claudeAddProvider(args: {
       if (existing.providers[args.providerName]) {
         throw cliError("CLAUDE_PROVIDER_ALREADY_EXISTS", `Claude provider "${args.providerName}" already exists.`, {
           provider: args.providerName,
-          suggestion: 'Use a different name or run `codexs remove --claude <name>` first.',
+          suggestion: 'Use a different name or run `aps remove --claude <name>` first.',
         });
       }
       existing.providers[args.providerName] = record;

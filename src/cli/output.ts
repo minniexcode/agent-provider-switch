@@ -183,14 +183,14 @@ function renderHumanSuccess(command: string, data: Record<string, unknown> | nul
       lines.push(`Exported providers to ${String(data?.exportedTo ?? "")}.`);
       break;
     case "init":
-      lines.push("Initialized codex-switch tool home.");
+      lines.push("Initialized agent-provider-switch tool home.");
       lines.push(`tool home: ${String(data?.toolHomeDir ?? "")}`);
       lines.push(`tool config: ${String(data?.toolConfigPath ?? "")}`);
       lines.push(`providers registry: ${String(data?.providersPath ?? "")}`);
       lines.push(`tool home created: ${String(data?.createdToolHomeDir ?? false)}`);
       lines.push(`tool config created: ${String(data?.createdToolConfigFile ?? false)}`);
       lines.push(`providers registry created: ${String(data?.createdProvidersFile ?? false)}`);
-      lines.push("next step: run `codexs add <provider> --profile <model-provider-id> --model <model> --api-key <key> --base-url <url>`.");
+      lines.push("next step: run `aps add <provider> --profile <model-provider-id> --model <model> --api-key <key> --base-url <url>`.");
       break;
     case "migrate":
       lines.push(`Migrated providers in ${String(data?.codexDir ?? "")} using ${String(data?.strategy ?? "")}.`);
@@ -199,7 +199,7 @@ function renderHumanSuccess(command: string, data: Record<string, unknown> | nul
       lines.push(`Backup: ${String(data?.backupPath ?? "")}`);
       break;
     case "setup":
-      lines.push("setup is deprecated. Use `codexs init` or `codexs migrate`.");
+      lines.push("setup is deprecated. Use `aps init` or `aps migrate`.");
       break;
     case "edit":
       lines.push(`Updated provider ${String(data?.provider ?? "")}. Backup: ${String(data?.backupPath ?? "")}`);
@@ -257,8 +257,8 @@ function renderHumanSuccess(command: string, data: Record<string, unknown> | nul
       const removed = Boolean(data?.removed);
       lines.push(
         removed
-          ? `Cleared the codex-switch lock (${String(data?.reason ?? "removed")}).`
-          : `No codex-switch lock to clear (${String(data?.reason ?? "absent")}).`
+          ? `Cleared the agent-provider-switch lock (${String(data?.reason ?? "removed")}).`
+          : `No agent-provider-switch lock to clear (${String(data?.reason ?? "absent")}).`
       );
       const owner = data?.owner as Record<string, unknown> | null | undefined;
       if (owner) {
@@ -338,15 +338,15 @@ function renderStatusProviderPath(data: Record<string, unknown> | null): string 
  */
 function renderStatusNextStep(data: Record<string, unknown> | null, warnings: string[]): string {
   if (warnings.length > 0) {
-    return "run `codexs doctor` to inspect warnings before the next write command";
+    return "run `aps doctor` to inspect warnings before the next write command";
   }
   if (!data?.provider) {
-    return "run `codexs switch <provider>` after adding or adopting a managed provider";
+    return "run `aps switch <provider>` after adding or adopting a managed provider";
   }
   if (Array.isArray(data?.issues) && (data?.issues as Array<Record<string, unknown>>).some((issue) => issue.code === "LEGACY_PROFILE_SELECTOR" || issue.code === "LEGACY_PROFILE_SECTION" || issue.code === "LEGACY_MODEL_PROVIDER_ENV_KEY")) {
-    return "run `codexs switch <provider>` to reproject the active route and clean legacy fields";
+    return "run `aps switch <provider>` to reproject the active route and clean legacy fields";
   }
-  return "run `codexs doctor` if you need a deeper diagnostic pass";
+  return "run `aps doctor` if you need a deeper diagnostic pass";
 }
 
 /**
@@ -357,21 +357,21 @@ function renderDoctorIssueNextStep(issue: Record<string, unknown>): string {
     case "CONFIG_NOT_FOUND":
       return "restore or create config.toml before switching providers";
     case "PROVIDERS_NOT_FOUND":
-      return "run `codexs init` and then add or migrate providers";
+      return "run `aps init` and then add or migrate providers";
     case "UNMANAGED_ACTIVE_PROFILE":
-      return "switch to a managed provider or adopt the active route with `codexs migrate`";
+      return "switch to a managed provider or adopt the active route with `aps migrate`";
     case "LEGACY_PROFILE_SELECTOR":
     case "LEGACY_PROFILE_SECTION":
     case "LEGACY_MODEL_PROVIDER_ENV_KEY":
-      return "rerun `codexs switch <provider>` to project top-level model/model_provider and remove legacy fields";
+      return "rerun `aps switch <provider>` to project top-level model/model_provider and remove legacy fields";
     case "PROVIDER_BASE_URL_MISMATCH":
-      return "rerun `codexs edit <provider> --base-url <url>` or `codexs switch <provider>` to repair the runtime projection";
+      return "rerun `aps edit <provider> --base-url <url>` or `aps switch <provider>` to repair the runtime projection";
     case "LOCK_STALE":
-      return "the next write command clears it automatically, or run `codexs unlock`";
+      return "the next write command clears it automatically, or run `aps unlock`";
     case "LOCK_OCCUPIED":
-      return "wait for the running operation, or run `codexs unlock --force` if it is a recycled pid";
+      return "wait for the running operation, or run `aps unlock --force` if it is a recycled pid";
     default:
-      return "inspect the issue details and rerun `codexs doctor` after fixing the state";
+      return "inspect the issue details and rerun `aps doctor` after fixing the state";
   }
 }
 
@@ -384,7 +384,7 @@ function renderClaudeHumanSuccess(command: string, data: Record<string, unknown>
     case "list": {
       const providers = (data.providers as Array<Record<string, unknown>>) ?? [];
       if (providers.length === 0) {
-        lines.push("No Claude providers configured. Run `codexs add --claude <name> --from-file <path>` to add one.");
+        lines.push("No Claude providers configured. Run `aps add --claude <name> --from-file <path>` to add one.");
       } else {
         lines.push("Claude Code providers:");
         for (const provider of providers) {

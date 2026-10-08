@@ -22,9 +22,9 @@ function spawnCli(args) {
   }
   delete env.NODE_ENV;
 
-  env.APS_HOME = makeTempDir("codex-switch-proc-home-");
-  env.APS_CODEX_DIR = makeTempDir("codex-switch-proc-codex-");
-  env.APS_CLAUDE_DIR = makeTempDir("codex-switch-proc-claude-");
+  env.APS_HOME = makeTempDir("agent-provider-switch-proc-home-");
+  env.APS_CODEX_DIR = makeTempDir("agent-provider-switch-proc-codex-");
+  env.APS_CLAUDE_DIR = makeTempDir("agent-provider-switch-proc-claude-");
 
   const result = spawnSync(process.execPath, [path.join(repoRoot, "dist", "cli.js"), ...args], {
     cwd: repoRoot,
@@ -56,7 +56,7 @@ module.exports = {
 
         for (const { args, status } of cases) {
           const result = spawnCli(args);
-          assert.equal(result.status, status, `codexs ${args.join(" ")} exited ${result.status}`);
+          assert.equal(result.status, status, `aps ${args.join(" ")} exited ${result.status}`);
         }
       },
     },
@@ -82,10 +82,10 @@ module.exports = {
         // observable across a real pipe: an in-process sink cannot lose bytes.
         const result = spawnCli(["--help"]);
         assert.equal(result.status, 0);
-        assert.match(result.stdout, /^codex-switch$/m);
+        assert.match(result.stdout, /^agent-provider-switch$/m);
         assert.match(
           result.stdout,
-          /codexs help add$/m,
+          /aps help add$/m,
           "the last line of the help text must arrive, so the write was not truncated"
         );
       },

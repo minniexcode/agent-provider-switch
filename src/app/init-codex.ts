@@ -5,7 +5,7 @@ import { ensureToolConfig } from "../storage/tool-config-repo";
 import { CommandResult } from "./types";
 
 /**
- * Initializes the codex-switch tool home without requiring target Codex runtime files.
+ * Initializes the agent-provider-switch tool home without requiring target Codex runtime files.
  */
 export function initCodex(args: {
   toolHomeDir: string;

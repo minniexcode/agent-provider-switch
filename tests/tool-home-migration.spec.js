@@ -80,7 +80,7 @@ function readJson(filePath) {
  * `~/.claude` the same way.
  */
 async function withRedirectedHome(run) {
-  const homeDir = makeTempDir("codex-switch-home-");
+  const homeDir = makeTempDir("agent-provider-switch-home-");
   return withEnv({ HOME: homeDir, USERPROFILE: homeDir }, async () => {
     assert.equal(
       path.resolve(os.homedir()),
@@ -121,7 +121,7 @@ module.exports = {
     {
       name: "a legacy home is moved, and both artifacts inside it are renamed",
       run() {
-        const rootDir = makeTempDir("codex-switch-migration-");
+        const rootDir = makeTempDir("agent-provider-switch-migration-");
         const legacyHomeDir = makeLegacyHome(rootDir, {
           lock: { pid: DEAD_PID, operation: "switch", createdAt: new Date().toISOString(), hostname: os.hostname() },
         });
@@ -153,7 +153,7 @@ module.exports = {
     {
       name: "a legacy home without a config or lock file still moves",
       run() {
-        const rootDir = makeTempDir("codex-switch-migration-");
+        const rootDir = makeTempDir("agent-provider-switch-migration-");
         const legacyHomeDir = makeLegacyHome(rootDir, { config: false, lock: null });
         const newHomeDir = path.join(rootDir, NEW_HOME_NAME);
 
@@ -169,7 +169,7 @@ module.exports = {
     {
       name: "an existing new home wins, and the legacy home is left alone",
       run() {
-        const rootDir = makeTempDir("codex-switch-migration-");
+        const rootDir = makeTempDir("agent-provider-switch-migration-");
         const legacyHomeDir = makeLegacyHome(rootDir);
         const newHomeDir = path.join(rootDir, NEW_HOME_NAME);
         fs.mkdirSync(newHomeDir, { recursive: true });
@@ -185,7 +185,7 @@ module.exports = {
     {
       name: "a missing legacy home, or a non-directory at its path, is a no-op",
       run() {
-        const rootDir = makeTempDir("codex-switch-migration-");
+        const rootDir = makeTempDir("agent-provider-switch-migration-");
         const newHomeDir = path.join(rootDir, NEW_HOME_NAME);
 
         const missing = migrateLegacyToolHome({ newHomeDir, legacyHomeDir: path.join(rootDir, LEGACY_HOME_NAME) });
@@ -204,7 +204,7 @@ module.exports = {
     {
       name: "a lock held by a running process defers the move instead of moving the home out from under it",
       run() {
-        const rootDir = makeTempDir("codex-switch-migration-");
+        const rootDir = makeTempDir("agent-provider-switch-migration-");
         const legacyHomeDir = makeLegacyHome(rootDir, {
           // This process's own pid is unambiguously alive, so the probe has a live owner to find.
           lock: { pid: process.pid, operation: "switch", createdAt: new Date().toISOString(), hostname: os.hostname() },
@@ -225,7 +225,7 @@ module.exports = {
     {
       name: "a lock from another host defers the move, because its owner cannot be probed here",
       run() {
-        const rootDir = makeTempDir("codex-switch-migration-");
+        const rootDir = makeTempDir("agent-provider-switch-migration-");
         const legacyHomeDir = makeLegacyHome(rootDir, {
           lock: {
             pid: DEAD_PID,
@@ -246,7 +246,7 @@ module.exports = {
     {
       name: "an unreadable lock record does not block the move",
       run() {
-        const rootDir = makeTempDir("codex-switch-migration-");
+        const rootDir = makeTempDir("agent-provider-switch-migration-");
         const legacyHomeDir = makeLegacyHome(rootDir);
         // Torn JSON: the residue of a kill mid-write, and the state most likely to be left behind.
         fs.writeFileSync(path.join(legacyHomeDir, LEGACY_LOCK_NAME), '{"pid": 4242, "operati', "utf8");
@@ -262,7 +262,7 @@ module.exports = {
     {
       name: "the two directories naming the same path is a no-op",
       run() {
-        const rootDir = makeTempDir("codex-switch-migration-");
+        const rootDir = makeTempDir("agent-provider-switch-migration-");
         const directory = makeLegacyHome(rootDir);
 
         const result = migrateLegacyToolHome({ newHomeDir: directory, legacyHomeDir: directory });
@@ -276,7 +276,7 @@ module.exports = {
       async run() {
         await withRedirectedHome(async (homeDir) => {
           const legacyHomeDir = makeLegacyHome(path.join(homeDir, ".config"));
-          const overrideDir = makeTempDir("codex-switch-override-");
+          const overrideDir = makeTempDir("agent-provider-switch-override-");
 
           const result = await withEnv({ APS_HOME: overrideDir }, () => ensureLegacyToolHomeMigrated());
 

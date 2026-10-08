@@ -32,7 +32,7 @@ export function isKnownCommandNameForHelp(commandName: string): boolean {
 export function buildHelpText(commandName?: string | null): string {
   if (!commandName) {
     return [
-      "codex-switch",
+      "agent-provider-switch",
       "",
       "Manage and switch local Codex provider/model-provider routing safely.",
       "Primary workflow: init -> add -> switch -> status -> doctor.",
@@ -40,8 +40,8 @@ export function buildHelpText(commandName?: string | null): string {
       "Deprecated entry: setup still exists only to point callers to init or migrate.",
       "",
       "Usage:",
-      "  codexs <command> [options]",
-      "  codexs help <command>",
+      "  aps <command> [options]",
+      "  aps help <command>",
       "",
       ...renderGroupedCommands(),
       "",
@@ -53,7 +53,7 @@ export function buildHelpText(commandName?: string | null): string {
       "  --version          Print the current CLI version.",
        "",
        "Environment:",
-       "  APS_HOME        Override the codex-switch tool home directory.",
+       "  APS_HOME        Override the agent-provider-switch tool home directory.",
        "  APS_CODEX_DIR   Default Codex directory when --codex-dir is not passed.",
        "  APS_CLAUDE_DIR  Override the Claude Code directory instead of ~/.claude.",
        "  NODE_ENV=development defaults to ./dev-codex/local-sandbox when no override is set.",
@@ -70,28 +70,28 @@ export function buildHelpText(commandName?: string | null): string {
       "  rollback restores files from a managed backup.",
       "",
       "Examples:",
-      "  codexs init",
-      "  codexs add packycode --profile packycode --model gpt-5 --api-key sk-xxx --base-url https://api.example/v1",
-      "  codexs switch packycode",
-      "  codexs status",
-      "  codexs doctor",
-      "  codexs migrate",
-      "  codexs config show",
-      "  codexs backups list",
-      "  codexs rollback",
-      "  codexs help add",
+      "  aps init",
+      "  aps add packycode --profile packycode --model gpt-5 --api-key sk-xxx --base-url https://api.example/v1",
+      "  aps switch packycode",
+      "  aps status",
+      "  aps doctor",
+      "  aps migrate",
+      "  aps config show",
+      "  aps backups list",
+      "  aps rollback",
+      "  aps help add",
     ].join("\n");
   }
 
   const nestedCommands = getNestedCommandTokens(commandName);
   if (nestedCommands.length > 0) {
     return [
-      `codexs ${commandName}`,
+      `aps ${commandName}`,
       "",
       `Available ${commandName} commands:`,
       ...nestedCommands.map((name) => `  ${name}`),
       "",
-      "Use `codexs help <command>` for detailed usage.",
+      "Use `aps help <command>` for detailed usage.",
     ].join("\n");
   }
 
@@ -106,7 +106,7 @@ export function buildHelpText(commandName?: string | null): string {
   }
 
   return [
-    `codexs ${command.tokens.join(" ")}`,
+    `aps ${command.tokens.join(" ")}`,
     "",
     command.summary,
     "",

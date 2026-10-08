@@ -59,7 +59,7 @@ export async function handleRegisteredCommand(
   }
 
   // `--claude` is a global boolean, so the parser accepts it on any command. Ignoring it when the
-  // command has no Claude path would answer the wrong question: `codexs status --claude` would
+  // command has no Claude path would answer the wrong question: `aps status --claude` would
   // report Codex state under a flag that asked about Claude, and nothing in the output would say
   // so. Refused instead, naming the commands that do support it.
   if (parsed.commandOptions.has("--claude") && !supportsClaudeTarget(ctx.command)) {
@@ -278,7 +278,7 @@ export async function handleRegisteredCommand(
       const switchToProfile = getSingleOption(parsed.commandOptions, "--switch-to") ?? undefined;
 
       // `--create-profile` is an action in its own right, because it writes a section the default
-      // projection does not. Counting it here keeps `codexs edit p --create-profile` from being
+      // projection does not. Counting it here keeps `aps edit p --create-profile` from being
       // refused as an empty update, and suppresses the interactive collector — prompting for fields
       // after an explicit flag would be the command second-guessing the invocation.
       const hasEditAction =
@@ -466,7 +466,7 @@ export async function handleRegisteredCommand(
             availableProfiles: adoptability.availableProfiles,
             adoptableProfiles: adoptability.adoptableProfiles,
             blockingReasonsByProfile: adoptability.blockingReasonsByProfile,
-            suggestion: "Run `codexs migrate` in an interactive terminal. Non-interactive migrate flags for profile selection and provider secrets are not available in this release.",
+            suggestion: "Run `aps migrate` in an interactive terminal. Non-interactive migrate flags for profile selection and provider secrets are not available in this release.",
           }
         );
       }

@@ -69,7 +69,7 @@ module.exports = {
         assert.equal(lineFor(healthy.stdout, "mapped provider"), "freemodel");
         assert.equal(lineFor(healthy.stdout, "provider path"), "managed provider");
         assert.equal(lineFor(healthy.stdout, "current model"), "gpt-5-mini");
-        assert.equal(lineFor(healthy.stdout, "next step"), "run `codexs doctor` if you need a deeper diagnostic pass");
+        assert.equal(lineFor(healthy.stdout, "next step"), "run `aps doctor` if you need a deeper diagnostic pass");
 
         // The line that printed an empty string because the payload never carried the field.
         assert.equal(lineFor(healthy.stdout, "tool home"), sandbox.home);
@@ -84,7 +84,7 @@ module.exports = {
         assert.equal(lineFor(drift.stdout, "runtime health"), "provider projection drift");
         // Drift is reported in the health line but not in `warnings`, so the next step falls through
         // to the generic diagnostic. `doctor` is what names the specific repair.
-        assert.equal(lineFor(drift.stdout, "next step"), "run `codexs doctor` if you need a deeper diagnostic pass");
+        assert.equal(lineFor(drift.stdout, "next step"), "run `aps doctor` if you need a deeper diagnostic pass");
 
         // The auth states are checked after drift, so they need a tree that is not already drifted
         // — otherwise the drift branch answers first and the auth assertions never run.
@@ -119,7 +119,7 @@ module.exports = {
         assert.match(ambiguous.stdout, /^  warnings: 1$/m);
         // Sharing a profile pushes a warning, and a warning outranks the "no provider" branch of the
         // next-step rule — the ambiguity is something `doctor` explains, not something a switch fixes.
-        assert.equal(lineFor(ambiguous.stdout, "next step"), "run `codexs doctor` to inspect warnings before the next write command");
+        assert.equal(lineFor(ambiguous.stdout, "next step"), "run `aps doctor` to inspect warnings before the next write command");
         assert.match(ambiguous.stdout, /^Warning: Current model provider "shared" is shared by multiple providers/m);
 
         // The branch below that one: nothing active, and no warning to outrank it. A registry with
@@ -130,7 +130,7 @@ module.exports = {
         assert.equal(lineFor(idleStatus.stdout, "runtime health"), "incomplete local state");
         assert.match(idleStatus.stdout, /^  warnings: 0$/m);
         assert.equal(lineFor(idleStatus.stdout, "mapped provider"), "(unmanaged or unresolved)");
-        assert.equal(lineFor(idleStatus.stdout, "next step"), "run `codexs switch <provider>` after adding or adopting a managed provider");
+        assert.equal(lineFor(idleStatus.stdout, "next step"), "run `aps switch <provider>` after adding or adopting a managed provider");
 
         // Legacy wiring diverts the next step from the generic one, because reprojecting is the
         // repair. `seedCodex` writes the legacy sections this branch is about.
@@ -143,7 +143,7 @@ module.exports = {
         assert.equal(lineFor(legacyStatus.stdout, "runtime health"), "ok");
         assert.equal(
             lineFor(legacyStatus.stdout, "next step"),
-            "run `codexs switch <provider>` to reproject the active route and clean legacy fields"
+            "run `aps switch <provider>` to reproject the active route and clean legacy fields"
         );
       },
     },

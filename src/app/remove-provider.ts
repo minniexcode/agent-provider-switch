@@ -53,7 +53,7 @@ export function removeProvider(args: {
   if (switchTargetName && !switchTargetModel) {
     throw cliError("MANAGED_PROFILE_FIELDS_MISSING", `Provider "${switchTargetName}" has no model to switch with.`, {
       provider: switchTargetName,
-      suggestion: "Run `codexs edit <provider> --model <name>` first.",
+      suggestion: "Run `aps edit <provider> --model <name>` first.",
     });
   }
   const switchTargetProjection = switchTarget
@@ -64,7 +64,7 @@ export function removeProvider(args: {
   if (switchTargetName && !switchTargetProjection) {
     throw cliError("MANAGED_PROFILE_FIELDS_MISSING", `Provider "${switchTargetName}" requires base_url before it can become active.`, {
       provider: switchTargetName,
-      suggestion: "Run `codexs edit <provider> --base-url <url>` first.",
+      suggestion: "Run `aps edit <provider> --base-url <url>` first.",
     });
   }
 

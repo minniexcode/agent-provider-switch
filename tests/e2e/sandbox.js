@@ -72,7 +72,7 @@ function writeJson(file, value) {
  * Claude target. Every check below runs before any child process starts.
  */
 function createSandbox() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "codex-switch-e2e-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agent-provider-switch-e2e-"));
   sandboxes.add(root);
   assertSandboxRoot(root);
 
@@ -221,7 +221,7 @@ function runCli(sandbox, args, options = {}) {
     throw result.error;
   }
   if (result.status === null) {
-    throw new Error(`the CLI was terminated by signal ${result.signal}: codexs ${args.join(" ")}`);
+    throw new Error(`the CLI was terminated by signal ${result.signal}: aps ${args.join(" ")}`);
   }
 
   // Failures write the envelope to stderr and successes to stdout, matching the bin.
@@ -244,10 +244,10 @@ function runCli(sandbox, args, options = {}) {
 function runOk(sandbox, args, options) {
   const result = runCli(sandbox, args, options);
   if (result.status !== 0) {
-    throw new Error(`expected codexs ${args.join(" ")} to succeed:\n${result.stderr}`);
+    throw new Error(`expected aps ${args.join(" ")} to succeed:\n${result.stderr}`);
   }
   if (!result.json) {
-    throw new Error(`expected a JSON envelope from codexs ${args.join(" ")}:\n${result.text}`);
+    throw new Error(`expected a JSON envelope from aps ${args.join(" ")}:\n${result.text}`);
   }
   return result;
 }
@@ -258,10 +258,10 @@ function runOk(sandbox, args, options) {
 function runFail(sandbox, args, options) {
   const result = runCli(sandbox, args, options);
   if (result.status === 0) {
-    throw new Error(`expected codexs ${args.join(" ")} to fail, but it exited 0:\n${result.stdout}`);
+    throw new Error(`expected aps ${args.join(" ")} to fail, but it exited 0:\n${result.stdout}`);
   }
   if (!result.json) {
-    throw new Error(`expected a JSON error envelope from codexs ${args.join(" ")}:\n${result.text}`);
+    throw new Error(`expected a JSON error envelope from aps ${args.join(" ")}:\n${result.text}`);
   }
   return result;
 }

@@ -34,7 +34,7 @@ module.exports = {
         // that resolves to no command is an error, or a typo would look like success.
         for (const typo of ["lst", "version", "swich", "providers"]) {
           const result = runCli(sandbox, [typo]);
-          assert.equal(result.status, 1, `codexs ${typo} must exit 1`);
+          assert.equal(result.status, 1, `aps ${typo} must exit 1`);
           assert.match(result.stderr, new RegExp(`Unknown command: ${typo}`));
           assert.doesNotMatch(result.stderr, /at Object\.|node:internal/, "no stack trace may reach the user");
         }
@@ -42,8 +42,8 @@ module.exports = {
         // A recognised group root is help, not an error, because it names a real surface.
         for (const topic of ["config", "backups"]) {
           const result = runCli(sandbox, [topic]);
-          assert.equal(result.status, 0, `codexs ${topic} must exit 0`);
-          assert.match(result.stdout, new RegExp(`^codexs ${topic}$`, "m"));
+          assert.equal(result.status, 0, `aps ${topic} must exit 0`);
+          assert.match(result.stdout, new RegExp(`^aps ${topic}$`, "m"));
         }
 
         // The envelope has to be produced for a failure the parser itself raised, which is the one

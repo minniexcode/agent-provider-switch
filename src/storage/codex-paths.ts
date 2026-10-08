@@ -42,7 +42,7 @@ export type ToolHomePaths = {
 };
 
 /**
- * Absolute paths used by codex-switch across its tool home and the target Codex directory.
+ * Absolute paths used by agent-provider-switch across its tool home and the target Codex directory.
  */
 export type CodexPaths = ToolHomePaths & {
   codexDir: string;
@@ -51,9 +51,9 @@ export type CodexPaths = ToolHomePaths & {
 };
 
 /**
- * Stored tool-level configuration for codex-switch.
+ * Stored tool-level configuration for agent-provider-switch.
  */
-export type CodexSwitchConfig = {
+export type AgentProviderSwitchConfig = {
   version: string;
   defaultCodexDir?: string;
 };
@@ -61,7 +61,7 @@ export type CodexSwitchConfig = {
 /**
  * Resolves the tool home directory, defaulting to `~/.config/agent-provider-switch`.
  */
-export function resolveCodexSwitchHome(toolHomeDir?: string): string {
+export function resolveToolHome(toolHomeDir?: string): string {
   if (toolHomeDir) {
     return path.resolve(toolHomeDir);
   }
@@ -77,7 +77,7 @@ export function resolveCodexSwitchHome(toolHomeDir?: string): string {
 /**
  * Resolves the working Codex directory using the documented precedence order.
  */
-export function resolveCodexDir(codexDir?: string, toolConfig?: CodexSwitchConfig | null): string {
+export function resolveCodexDir(codexDir?: string, toolConfig?: AgentProviderSwitchConfig | null): string {
   if (codexDir) {
     return path.resolve(codexDir);
   }
@@ -102,7 +102,7 @@ export function resolveCodexDir(codexDir?: string, toolConfig?: CodexSwitchConfi
  * Expands the tool home into the paths shared by every command, for either target.
  */
 export function createToolHomePaths(input?: string | { toolHomeDir?: string }): ToolHomePaths {
-  const toolHomeDir = resolveCodexSwitchHome(typeof input === "string" ? input : input?.toolHomeDir);
+  const toolHomeDir = resolveToolHome(typeof input === "string" ? input : input?.toolHomeDir);
   return {
     toolHomeDir,
     toolConfigPath: path.join(toolHomeDir, TOOL_CONFIG_FILENAME),
@@ -135,5 +135,5 @@ export function createCodexPaths(args: { codexDir: string; toolHomeDir?: string 
  * than a full `CodexPaths`, which cannot be built without a Codex directory.
  */
 export function resolveLockPath(toolHomeDir?: string): string {
-  return path.join(resolveCodexSwitchHome(toolHomeDir), LOCK_FILENAME);
+  return path.join(resolveToolHome(toolHomeDir), LOCK_FILENAME);
 }

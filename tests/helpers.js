@@ -50,7 +50,7 @@ function cleanupTempDirs() {
 process.on("exit", cleanupTempDirs);
 
 function makeToolHomeWithManagedState() {
-  const toolHomeDir = makeTempDir("codex-switch-tool-home-");
+  const toolHomeDir = makeTempDir("agent-provider-switch-tool-home-");
   const packageJson = require("../package.json");
   fs.writeFileSync(path.join(toolHomeDir, "providers.json"), `${JSON.stringify({ providers: {} }, null, 2)}\n`, "utf8");
   fs.writeFileSync(path.join(toolHomeDir, "agent-provider-switch.json"), `${JSON.stringify({ version: packageJson.version }, null, 2)}\n`, "utf8");
@@ -94,7 +94,7 @@ async function withEnv(overrides, run) {
  */
 async function withClaudeEnv(settings, run) {
   const toolHomeDir = makeToolHomeWithManagedState();
-  const rootDir = makeTempDir("codex-switch-claude-root-");
+  const rootDir = makeTempDir("agent-provider-switch-claude-root-");
   // Nested and not yet created, so the switch's directory-creation branch is exercised.
   const claudeDir = path.resolve(rootDir, "nested", "claude");
   const importFile = path.join(rootDir, "incoming-settings.json");
@@ -130,7 +130,7 @@ function makeCodexFixture({
   baseUrl = "https://free.example.com/v1",
   legacyProfile = null,
 } = {}) {
-  const codexDir = makeTempDir("codex-switch-codex-");
+  const codexDir = makeTempDir("agent-provider-switch-codex-");
   const rootFields = [
     modelProvider ? `model_provider = ${JSON.stringify(modelProvider)}` : null,
     legacyProfile ? `profile = ${JSON.stringify(legacyProfile)}` : null,
@@ -165,14 +165,14 @@ async function runBuiltCli(input) {
 
   const toolHomeDir = !Array.isArray(input) && input.toolHomeDir
     ? path.resolve(input.toolHomeDir)
-    : makeTempDir("codex-switch-tool-home-");
+    : makeTempDir("agent-provider-switch-tool-home-");
 
   // The Codex directory is never used as the tool home: `--codex-dir` names the target runtime
   // a command operates on, while the tool home holds this tool's own state. A call that names
   // neither is pointed at a temporary Codex directory so it cannot touch the real ~/.codex.
   const overrides = { APS_HOME: toolHomeDir };
   if (!args.includes("--codex-dir")) {
-    overrides.APS_CODEX_DIR = makeTempDir("codex-switch-codex-");
+    overrides.APS_CODEX_DIR = makeTempDir("agent-provider-switch-codex-");
   }
 
   // Claude commands replace `settings.json` wholesale, and `resolveClaudeDir()` falls back to
@@ -181,7 +181,7 @@ async function runBuiltCli(input) {
   // the Codex equivalent, so it does not depend on each spec remembering.
   // `withClaudeEnv()` sets the variable before calling in and is left alone.
   if (args.includes("--claude") && !process.env.APS_CLAUDE_DIR) {
-    overrides.APS_CLAUDE_DIR = makeTempDir("codex-switch-claude-");
+    overrides.APS_CLAUDE_DIR = makeTempDir("agent-provider-switch-claude-");
   }
 
   const stdout = [];

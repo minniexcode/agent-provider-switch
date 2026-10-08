@@ -45,13 +45,13 @@ module.exports = {
 
         const top = runCli(sandbox, ["-h"]);
         assert.equal(top.status, 0);
-        assert.match(top.stdout, /^codex-switch$/m);
+        assert.match(top.stdout, /^agent-provider-switch$/m);
 
         // Symmetric with the `help <topic>` subcommand, which is what makes the short form a
         // usable alias rather than a second, thinner help surface.
         const topic = runCli(sandbox, ["add", "-h"]);
         assert.equal(topic.status, 0);
-        assert.match(topic.stdout, /^codexs add$/m);
+        assert.match(topic.stdout, /^aps add$/m);
         assert.match(topic.stdout, /^Usage:$/m);
       },
     },

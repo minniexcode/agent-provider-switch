@@ -47,7 +47,7 @@ module.exports = {
     {
       name: "a rename held open by another process is retried and succeeds",
       run() {
-        const directory = makeTempDir("codex-switch-atomic-");
+        const directory = makeTempDir("agent-provider-switch-atomic-");
         const target = path.join(directory, "config.toml");
 
         withPlatform("win32", () => {
@@ -78,7 +78,7 @@ module.exports = {
     {
       name: "a permanent renaming failure is reported after the retries are exhausted",
       run() {
-        const directory = makeTempDir("codex-switch-atomic-");
+        const directory = makeTempDir("agent-provider-switch-atomic-");
         const target = path.join(directory, "config.toml");
         fs.writeFileSync(target, "original\n", "utf8");
 
@@ -111,7 +111,7 @@ module.exports = {
     {
       name: "an error that is not a transient rename failure is not retried",
       run() {
-        const directory = makeTempDir("codex-switch-atomic-");
+        const directory = makeTempDir("agent-provider-switch-atomic-");
         const target = path.join(directory, "config.toml");
 
         withPlatform("win32", () => {
@@ -140,7 +140,7 @@ module.exports = {
     {
       name: "the happy path renames exactly once",
       run() {
-        const directory = makeTempDir("codex-switch-atomic-");
+        const directory = makeTempDir("agent-provider-switch-atomic-");
         const target = path.join(directory, "config.toml");
 
         let attempts = 0;
