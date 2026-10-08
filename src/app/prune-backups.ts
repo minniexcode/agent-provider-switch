@@ -1,7 +1,7 @@
 import { DEFAULT_BACKUP_RETENTION } from "../domain/backups";
 import { cliError } from "../domain/errors";
 import { pruneBackups } from "../storage/backup-repo";
-import { withCodexLock } from "../storage/lock-repo";
+import { withToolLock } from "../storage/lock-repo";
 import { CommandResult } from "./types";
 
 /**
@@ -41,7 +41,7 @@ export function pruneBackupEntries(args: {
 }): CommandResult {
   const retentionWarnings: string[] = [];
 
-  const lock = withCodexLock(args.lockPath, "backups-prune", () => {
+  const lock = withToolLock(args.lockPath, "backups-prune", () => {
     const result = pruneBackups({
       backupsDir: args.backupsDir,
       latestBackupPath: args.latestBackupPath,

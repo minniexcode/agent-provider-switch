@@ -34,7 +34,7 @@ export function buildHelpText(commandName?: string | null): string {
     return [
       "agent-provider-switch",
       "",
-      "Manage and switch local Codex provider/model-provider routing safely.",
+      "Manage and switch local Codex and Claude Code provider routing safely.",
       "Primary workflow: init -> add -> switch -> status -> doctor.",
       "Advanced adopt flows use migrate only when you already have Codex runtime state to import.",
       "Deprecated entry: setup still exists only to point callers to init or migrate.",

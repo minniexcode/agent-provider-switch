@@ -4,7 +4,7 @@ import { BackupManifest, FileBackupEntry } from "../domain/backup";
 import { DEFAULT_BACKUP_RETENTION } from "../domain/backups";
 import { cliError, normalizeError } from "../domain/errors";
 import { createBackup, pruneBackups, restoreManifest, saveLatestManifest } from "../storage/backup-repo";
-import { withCodexLock } from "../storage/lock-repo";
+import { withToolLock } from "../storage/lock-repo";
 
 type ManagedFile = {
   absolutePath: string;
@@ -43,7 +43,7 @@ export function runMutation<TData extends Record<string, unknown>>(args: {
   // through the command's result, which is the structured channel both output modes read.
   const retentionWarnings: string[] = [];
 
-  const lock = withCodexLock(args.lockPath, args.operation, () => {
+  const lock = withToolLock(args.lockPath, args.operation, () => {
     const backup = createBackup(args.backupsDir, args.operation, args.files);
     try {
       const data = args.mutate({ backup });

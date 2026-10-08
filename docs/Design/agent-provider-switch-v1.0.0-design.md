@@ -187,9 +187,11 @@ correct: an informational command should have no side effects.
 - **In-flight legacy process.** Guard 4 narrows the window but cannot eliminate it: a pre-rename
   process that acquires the legacy lock after the guard reads it. On POSIX the rename can succeed out
   from under it; on Windows it typically fails `EPERM`/`EBUSY` and is retried.
-- **`withCodexLock()` keeps its name.** It guards the lock shared by both targets, so the name is
-  already slightly wrong — more so now that the tool is not Codex-specific. Renaming it is a
-  mechanical follow-up, not part of this change.
+- **Two names the rename had to reach that are not the tool's own name.** The top-level help banner
+  still advertised Codex-only routing, so it now names both targets. `withCodexLock()` became
+  `withToolLock()`: it guards the one lock file both targets contend for, so a name taken from
+  either of them misdescribes the other. Both are string-and-identifier changes with no behaviour
+  attached, but leaving them would have been the last place a Codex-only identity survived.
 
 ## 5. Release mechanics
 

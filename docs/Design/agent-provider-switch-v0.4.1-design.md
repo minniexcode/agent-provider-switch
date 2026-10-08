@@ -36,7 +36,7 @@ rule here fails closed, and the escape hatch is explicit rather than automatic.
 
 ### Current state
 
-`withCodexLock()` wraps every mutation: `acquireLock()`, run, `releaseLock()` in a `finally`. The
+`withToolLock()` wraps every mutation: `acquireLock()`, run, `releaseLock()` in a `finally`. The
 lock record is `{ pid, operation, createdAt }`, written with `fs.writeFileSync(..., { flag: "wx" })`
 so a second writer fails on the exclusive-create. On failure the code reads the record back and
 throws `LOCK_CONFLICT` carrying the active pid, operation, and age. `readLockRecord()` is called

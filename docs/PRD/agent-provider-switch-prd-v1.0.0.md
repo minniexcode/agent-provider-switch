@@ -43,6 +43,7 @@ finding; it is the naming change that makes the `2.x` roadmap's target-generaliz
 | environment variables | `CODEXS_HOME` / `CODEXS_CODEX_DIR` / `CODEXS_CLAUDE_DIR` | `APS_HOME` / `APS_CODEX_DIR` / `APS_CLAUDE_DIR` |
 | domain type | `CodexSwitchConfig` | `AgentProviderSwitchConfig` |
 | resolver | `resolveCodexSwitchHome()` | `resolveToolHome()` |
+| lock wrapper | `withCodexLock()` | `withToolLock()` |
 
 The split follows one rule: **long names for the eye, short names for the hand.** A directory name is
 read rarely and a command is typed constantly, so the directory keeps the descriptive name while

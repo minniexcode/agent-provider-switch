@@ -36,8 +36,11 @@ export type LockState = {
  *
  * Returns the mutation's value alongside any warnings raised while taking the lock, so a
  * takeover is reported in the command's structured result rather than only on disk.
+ *
+ * Named for the tool home rather than for a target: both targets contend for this one lock
+ * file, so a name taken from either of them is wrong for the other.
  */
-export function withCodexLock<T>(
+export function withToolLock<T>(
   lockPath: string,
   operation: string,
   run: () => T

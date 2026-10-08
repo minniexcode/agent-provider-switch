@@ -88,8 +88,8 @@ module.exports = {
         // delete the very temporary directory holding the lock.
         const lockRepoPath = path.join(repoRoot, "dist", "storage", "lock-repo.js");
         const script = [
-          `const { withCodexLock } = require(${JSON.stringify(lockRepoPath)});`,
-          `withCodexLock(${JSON.stringify(lockPath)}, "crash-fixture", () => {`,
+          `const { withToolLock } = require(${JSON.stringify(lockRepoPath)});`,
+          `withToolLock(${JSON.stringify(lockPath)}, "crash-fixture", () => {`,
           `  process.exit(0);`,
           `});`,
         ].join("\n");
