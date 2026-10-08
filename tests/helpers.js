@@ -58,6 +58,20 @@ function makeToolHomeWithManagedState() {
 }
 
 /**
+ * Writes a `claudeDefaults` block into an existing tool home's config.
+ *
+ * Separate from `makeToolHomeWithManagedState()` on purpose: that helper writes a bare
+ * `{ version }`, and the older Claude specs depend on there being no defaults at all — their green
+ * runs are the proof that a home without the block behaves exactly as before.
+ */
+function setClaudeDefaults(toolHomeDir, settings) {
+  const configPath = path.join(toolHomeDir, "agent-provider-switch.json");
+  const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  config.claudeDefaults = { settings };
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+/**
  * Runs `callback` with the given environment variables applied, restoring them afterwards.
  */
 async function withEnv(overrides, run) {
@@ -227,6 +241,7 @@ module.exports = {
   cleanupTempDirs,
   withEnv,
   makeToolHomeWithManagedState,
+  setClaudeDefaults,
   withClaudeEnv,
   makeCodexFixture,
   runBuiltCli,

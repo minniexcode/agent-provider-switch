@@ -30,6 +30,7 @@ export async function executeCommand(
 
   const toolConfigPath = createToolHomePaths().toolConfigPath;
   const toolConfig = readToolConfigIfExists(toolConfigPath);
+  ctx.toolConfig = toolConfig;
   ctx.options.codexDir = resolveCodexDir(ctx.options.codexDir ?? undefined, toolConfig);
 
   const result = await definition.handler(ctx, parsed, runtime);

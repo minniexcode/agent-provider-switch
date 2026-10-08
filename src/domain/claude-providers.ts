@@ -1,3 +1,5 @@
+import { mergeClaudeSettings } from "./claude-settings-merge";
+
 /**
  * Claude Code provider definition stored in claude-providers.json.
  */
@@ -24,6 +26,51 @@ export type ClaudeDefaults = {
 export type ClaudeProvidersFile = {
   providers: Record<string, ClaudeProviderRecord>;
 };
+
+/**
+ * A provider record together with the settings `switch` would write for it.
+ *
+ * `effective` is a separate field, never a replacement for `settings`, and that is load-bearing.
+ * The stored record is a delta, and `remove` reads the whole file, deletes one key, and writes it
+ * back: if the reader overwrote `settings` with the merged result, removing one provider would
+ * silently expand the defaults into every survivor. A reader that serves a write must stay raw;
+ * only read-only services take this type.
+ */
+export type ResolvedClaudeProviderRecord = ClaudeProviderRecord & {
+  effective: Record<string, unknown>;
+};
+
+/**
+ * Resolves one stored record against the shared defaults.
+ *
+ * With no defaults block nothing is merged and the record is copied verbatim. That is stricter than
+ * merging over an empty object, which would also strip explicit `null` members — a deletion marker
+ * once a block exists, but plain data in a record imported before one did. Without this rule,
+ * upgrading would change what `switch` writes for a user who never opted in.
+ */
+export function resolveClaudeProviderRecord(
+  record: ClaudeProviderRecord,
+  defaults: Record<string, unknown> | null
+): ResolvedClaudeProviderRecord {
+  return {
+    ...record,
+    effective: defaults === null ? JSON.parse(JSON.stringify(record.settings)) : mergeClaudeSettings(defaults, record.settings),
+  };
+}
+
+/**
+ * Resolves every record in a providers file, for the read-only list and current services.
+ */
+export function resolveClaudeProvidersFile(
+  file: ClaudeProvidersFile,
+  defaults: Record<string, unknown> | null
+): { providers: Record<string, ResolvedClaudeProviderRecord> } {
+  const providers: Record<string, ResolvedClaudeProviderRecord> = {};
+  for (const [name, record] of Object.entries(file.providers)) {
+    providers[name] = resolveClaudeProviderRecord(record, defaults);
+  }
+  return { providers };
+}
 
 /**
  * Validates and normalizes unknown JSON into the claude-providers.json domain model.

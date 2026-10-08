@@ -376,6 +376,25 @@ function renderDoctorIssueNextStep(issue: Record<string, unknown>): string {
 }
 
 /**
+ * Collapses dotted settings paths into a one-line summary: `env.A` and `env.B` become `env(2)`,
+ * and a top-level key that is itself the path stays a bare name.
+ */
+function summarizeInheritedPaths(paths: string[]): string {
+  const groups = new Map<string, number>();
+  const bare = new Set<string>();
+  for (const settingsPath of [...paths].sort()) {
+    const [head, ...rest] = settingsPath.split(".");
+    if (rest.length === 0) {
+      bare.add(head);
+    }
+    groups.set(head, (groups.get(head) ?? 0) + 1);
+  }
+  return [...groups.entries()]
+    .map(([head, count]) => (bare.has(head) && count === 1 ? head : `${head}(${count})`))
+    .join(", ");
+}
+
+/**
  * Builds the plain-text success view for Claude Code provider commands.
  */
 function renderClaudeHumanSuccess(command: string, data: Record<string, unknown>, warnings: string[]): string[] {
@@ -398,10 +417,14 @@ function renderClaudeHumanSuccess(command: string, data: Record<string, unknown>
       break;
     }
     case "show": {
+      // Paths only: `inherited` never carries a value, so marking entries cannot leak anything.
+      const inherited = new Set(Array.isArray(data.inherited) ? (data.inherited as string[]) : []);
+      const mark = (settingsPath: string): string => (inherited.has(settingsPath) ? " (inherited)" : "");
+
       lines.push(`Claude provider: ${String(data.provider ?? "")}`);
-      if (data.model) lines.push(`  model: ${String(data.model)}`);
-      if (data.baseUrl) lines.push(`  base URL: ${String(data.baseUrl)}`);
-      if (data.theme) lines.push(`  theme: ${String(data.theme)}`);
+      if (data.model) lines.push(`  model: ${String(data.model)}${mark("model")}`);
+      if (data.baseUrl) lines.push(`  base URL: ${String(data.baseUrl)}${mark("env.ANTHROPIC_BASE_URL")}`);
+      if (data.theme) lines.push(`  theme: ${String(data.theme)}${mark("theme")}`);
       if (data.note) lines.push(`  note: ${String(data.note)}`);
       if (Array.isArray(data.tags) && data.tags.length > 0) {
         lines.push(`  tags: ${(data.tags as string[]).join(", ")}`);
@@ -414,11 +437,14 @@ function renderClaudeHumanSuccess(command: string, data: Record<string, unknown>
         lines.push("  env:");
         for (const [key, value] of Object.entries(env)) {
           const display = revealed || !isSecretKey(key) ? value : maskSecret(value);
-          lines.push(`    ${key}=${display}`);
+          lines.push(`    ${key}=${display}${mark(`env.${key}`)}`);
         }
         if (!revealed) {
           lines.push("  (secret values masked; pass --reveal to print them)");
         }
+      }
+      if (inherited.size > 0) {
+        lines.push(`  inherited: ${summarizeInheritedPaths([...inherited])}`);
       }
       break;
     }

@@ -13,7 +13,7 @@ import { getSingleOption, hasFlag } from "./args";
 import { CommandExecutionContext, ParsedCommand } from "./types";
 import { createPromptRuntime } from "../interaction/prompt";
 import { readClaudeProvidersFileIfExists } from "../storage/claude-providers-repo";
-import { claudeSettingsMatch } from "../domain/claude-providers";
+import { claudeSettingsMatch, resolveClaudeProvidersFile } from "../domain/claude-providers";
 import { readClaudeSettings } from "../storage/claude-providers-repo";
 
 /**
@@ -56,6 +56,10 @@ export async function handleClaudeCommand(
   const lockPath = toolHomePaths.lockPath;
   const backupsDir = toolHomePaths.backupsDir;
   const latestBackupPath = toolHomePaths.latestBackupPath;
+  // Read once, here, and handed to every service. Each one that turns a stored record into
+  // something shown or written needs it, and a service that forgot would silently work on a
+  // delta — so the argument is required everywhere rather than defaulted.
+  const defaults = ctx.toolConfig?.claudeDefaults?.settings ?? null;
 
   switch (ctx.command) {
     case "add": {
@@ -130,6 +134,7 @@ export async function handleClaudeCommand(
         providerName = await promptForClaudeProviderSelection(
           claudePaths.claudeProvidersPath,
           claudePaths.claudeSettingsPath,
+          defaults,
           "Choose a Claude provider to switch to"
         );
       }
@@ -145,6 +150,7 @@ export async function handleClaudeCommand(
         claudeProvidersPath: claudePaths.claudeProvidersPath,
         claudeSettingsPath: claudePaths.claudeSettingsPath,
         providerName,
+        defaults,
       });
     }
 
@@ -152,6 +158,7 @@ export async function handleClaudeCommand(
       return claudeListProviders({
         claudeProvidersPath: claudePaths.claudeProvidersPath,
         claudeSettingsPath: claudePaths.claudeSettingsPath,
+        defaults,
       });
 
     case "show": {
@@ -162,6 +169,7 @@ export async function handleClaudeCommand(
         providerName = await promptForClaudeProviderSelection(
           claudePaths.claudeProvidersPath,
           claudePaths.claudeSettingsPath,
+          defaults,
           "Choose a Claude provider to show"
         );
       }
@@ -174,6 +182,7 @@ export async function handleClaudeCommand(
         claudeProvidersPath: claudePaths.claudeProvidersPath,
         providerName,
         reveal: ctx.options.reveal,
+        defaults,
       });
     }
 
@@ -181,6 +190,7 @@ export async function handleClaudeCommand(
       return claudeGetCurrent({
         claudeProvidersPath: claudePaths.claudeProvidersPath,
         claudeSettingsPath: claudePaths.claudeSettingsPath,
+        defaults,
       });
 
     case "remove": {
@@ -193,6 +203,7 @@ export async function handleClaudeCommand(
         providerName = await promptForClaudeProviderSelection(
           claudePaths.claudeProvidersPath,
           claudePaths.claudeSettingsPath,
+          defaults,
           "Choose a Claude provider to remove"
         );
       }
@@ -229,9 +240,12 @@ export async function handleClaudeCommand(
 async function promptForClaudeProviderSelection(
   claudeProvidersPath: string,
   claudeSettingsPath: string,
+  defaults: Record<string, unknown> | null,
   message: string
 ): Promise<string> {
-  const file = readClaudeProvidersFileIfExists(claudeProvidersPath);
+  // Resolved, because the choice labels and the "(current)" marker describe what a switch writes.
+  // This site sits outside src/app/, so it is the one a search of the Claude services would miss.
+  const file = resolveClaudeProvidersFile(readClaudeProvidersFileIfExists(claudeProvidersPath), defaults);
   const names = Object.keys(file.providers).sort();
   if (names.length === 0) {
     throw cliError("CLAUDE_PROVIDERS_NOT_FOUND", "No Claude providers registered. Run `aps add --claude` first.");
@@ -240,9 +254,9 @@ async function promptForClaudeProviderSelection(
   const currentSettings = readClaudeSettings(claudeSettingsPath);
   const choices = names.map((name) => {
     const record = file.providers[name];
-    const isActive = currentSettings ? claudeSettingsMatch(record.settings, currentSettings) : false;
-    const env = record.settings.env as Record<string, string> | undefined;
-    const model = (record.settings.model as string) ?? "";
+    const isActive = currentSettings ? claudeSettingsMatch(record.effective, currentSettings) : false;
+    const env = record.effective.env as Record<string, string> | undefined;
+    const model = (record.effective.model as string) ?? "";
     const suffix = isActive ? " (current)" : "";
     const baseUrl = env?.ANTHROPIC_BASE_URL ?? "";
     return {

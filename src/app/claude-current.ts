@@ -1,13 +1,17 @@
-import { claudeSettingsMatch, summarizeClaudeSettings } from "../domain/claude-providers";
+import { claudeSettingsMatch, resolveClaudeProvidersFile, summarizeClaudeSettings } from "../domain/claude-providers";
 import { readClaudeProvidersFileIfExists, readClaudeSettings } from "../storage/claude-providers-repo";
 import { CommandResult } from "./types";
 
 /**
  * Detects which Claude provider matches the current settings.json.
+ *
+ * Matching runs against the resolved settings, since that is what `switch` wrote: a delta-stored
+ * record compared raw would never be reported as managed.
  */
 export async function claudeGetCurrent(args: {
   claudeProvidersPath: string;
   claudeSettingsPath: string;
+  defaults: Record<string, unknown> | null;
 }): Promise<CommandResult> {
   const currentSettings = readClaudeSettings(args.claudeSettingsPath);
   if (!currentSettings) {
@@ -21,11 +25,11 @@ export async function claudeGetCurrent(args: {
     };
   }
 
-  const file = readClaudeProvidersFileIfExists(args.claudeProvidersPath);
+  const file = resolveClaudeProvidersFile(readClaudeProvidersFileIfExists(args.claudeProvidersPath), args.defaults);
   const summary = summarizeClaudeSettings(currentSettings);
 
   for (const [name, record] of Object.entries(file.providers)) {
-    if (claudeSettingsMatch(record.settings, currentSettings)) {
+    if (claudeSettingsMatch(record.effective, currentSettings)) {
       return {
         data: {
           target: "claude",

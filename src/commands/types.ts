@@ -1,3 +1,5 @@
+import type { AgentProviderSwitchConfig } from "../storage/codex-paths";
+
 /**
  * Global flags that apply to every CLI command.
  */
@@ -52,6 +54,12 @@ export type ParsedCommand = {
 export type CommandExecutionContext = {
   command: CommandId | "help" | "version";
   options: GlobalOptions;
+  /**
+   * The parsed tool config, set by `executeCommand` from the read it already performs for
+   * `defaultCodexDir`. Absent when no tool config exists, and absent in any context built
+   * outside dispatch, so consumers treat it as optional.
+   */
+  toolConfig?: AgentProviderSwitchConfig | null;
 };
 
 export type CommandGroup = "read" | "write" | "recovery";
