@@ -350,6 +350,30 @@ module.exports = {
       },
     },
     {
+      name: "editing a default that feeds the identity match leaves current unmanaged until the next switch",
+      async run() {
+        // Pins a documented consequence, not an endorsement of it: the live settings.json is only
+        // rewritten by `switch`, so after a default the match depends on changes, the active
+        // provider reads as unmanaged until it is switched again.
+        await withClaudeEnv({}, async ({ toolHomeDir }) => {
+          setClaudeDefaults(toolHomeDir, DEFAULTS_SETTINGS);
+          writeRegistry(toolHomeDir, { delta: DELTA });
+
+          await runClaude(toolHomeDir, ["switch", "--claude", "delta", "--json"]);
+          const managed = await runClaude(toolHomeDir, ["current", "--claude", "--json"]);
+          assert.equal(managed.payload.data.status, "managed");
+
+          setClaudeDefaults(toolHomeDir, { ...DEFAULTS_SETTINGS, model: "opus" });
+          const drifted = await runClaude(toolHomeDir, ["current", "--claude", "--json"]);
+          assert.equal(drifted.payload.data.status, "unmanaged");
+
+          await runClaude(toolHomeDir, ["switch", "--claude", "delta", "--json"]);
+          const repaired = await runClaude(toolHomeDir, ["current", "--claude", "--json"]);
+          assert.equal(repaired.payload.data.status, "managed");
+        });
+      },
+    },
+    {
       name: "--full is refused where it would be ignored, instead of being silently accepted",
       async run() {
         await withClaudeEnv({}, async ({ toolHomeDir }) => {

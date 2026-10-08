@@ -1,15 +1,33 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 - 2026-10-08
 
-Repo-only. `1.0.0` is still the current release on npm: both entries below are cosmetic or
-internal, with no command surface and nothing a script reads, so they are held for the next
-release that has real substance rather than forcing a version bump of their own.
+Shared-defaults release. A Claude provider has always been stored as a complete `settings.json`, and most of that is identical across providers: in the real tool home that prompted this, 10 `env` keys and 4 top-level keys were byte-identical in all four records. This release lets the shared part live once, in the tool config, with each record storing only what differs. Additive and backward compatible: a tool home without the new block behaves exactly as `1.0.0` did, and existing full records stay valid.
+
+### Added
+
+- An optional `claudeDefaults` block in `agent-provider-switch.json`, shaped `{ "settings": { ... } }` to mirror a provider record. It is written by hand; no command creates or edits it.
+- `aps config compact --claude [--dry-run]` — rewrites every stored Claude provider to the entries that differ from the defaults. It changes only how a provider is stored: `switch --claude` writes the same file before and after, and `rollback` undoes the rewrite. `--dry-run` takes no lock, creates no backup, and leaves the file byte-identical, so it succeeds while another operation holds the lock. A run with nothing to change writes nothing and takes no backup. It refuses, naming the file, when the block is absent.
+- `aps add --claude --from-file <f> --full` — keeps every entry of the file instead of only those that differ from the defaults. That pins them against later changes to the defaults; the record is still resolved over the defaults when read.
+- `show --claude` marks inherited entries `(inherited)`, prints an `inherited:` summary, and `--json` carries an `inherited` list of dotted paths — paths only, never values. `--reveal` returns `settings` (the resolved result) plus `overrides` (what is stored).
+- `tests/tool-config.spec.js`, `tests/claude-settings-merge.spec.js`, `tests/claude-defaults.spec.js`, and `tests/claude-config-compact.spec.js`, including seeded randomized properties for the merge. `docs/PRD/agent-provider-switch-prd-v1.1.0.md` and `docs/Design/agent-provider-switch-v1.1.0-design.md`.
 
 ### Changed
 
-- The top-level `--help` banner names both targets: "Manage and switch local Codex and Claude Code provider routing safely." It had advertised Codex-only routing since before Claude Code became the second target.
+- **Merge rule, in one line:** objects merge recursively, the record wins, arrays are replaced wholesale, and `null` deletes an inherited key. `env` has no special case. An empty object does **not** clear an inherited object — `"enabledPlugins": {}` still inherits; clearing takes an explicit `null`.
+- `add --claude --from-file` now slims against the defaults when a block exists. This is inheritance-first: a key the defaults set and the file omits is inherited, so slimming is not a byte-preserving round trip of the file. What it guarantees is that it never changes what a switch writes.
+- `switch`, `list`, `current`, `show`, and the interactive selector resolve a stored record over the defaults before using it. The resolved settings are a separate `effective` field and never overwrite the stored `settings`: `remove` reads the whole file and writes it back, so a reader that overwrote `settings` would silently expand the defaults into every surviving record.
+- With no `claudeDefaults` block nothing is merged and a record is written verbatim, explicit `null` members included, so upgrading cannot change what `switch` writes for anyone who never opts in.
+- `--full` and `--dry-run` are refused with `INVALID_ARGUMENT` on any command that would ignore them, instead of being silently accepted: the parser takes a global boolean anywhere, and `aps backups prune --dry-run` would otherwise delete real backups under a flag that promised a preview. The check runs before the Claude path is entered, so `switch --claude --full` is refused too. `--claude` is now accepted by `config compact` as well.
+- `agent-provider-switch.json` validation rejects an unknown key under `claudeDefaults` and a non-object `settings` with `INVALID_CONFIG`, rather than dropping them. The tool config is read on every command, so a malformed block fails all of them until it is fixed.
+- The top-level `--help` banner names both targets. It had advertised Codex-only routing since before Claude Code became the second target.
 - The wrapper that holds the shared lock is `withToolLock()`. Both targets contend for that one lock file, so it no longer carries either target's name. The old identifier is recorded in the `1.0.0` rename map.
+
+### Notes
+
+- Editing a default changes every provider that inherits the edited key, but the live `~/.claude/settings.json` is not rewritten until the next `switch`. After changing `model`, a model-map variable, or the base URL in the defaults, `current --claude` reports the active provider as unmanaged until `aps switch --claude <name>` is run again.
+- An explicit `null` in a record is plain data while no block exists and a deletion marker once one does, so adding a block can start stripping such members from the written file.
+- There is still no export or import of Claude provider records, so no built-in way to back up `claude-providers.json` as data.
 
 ## 1.0.0 - 2026-10-08
 

@@ -1,14 +1,16 @@
 # CLI Usage
 
-This document describes the current `1.0.0` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
+This document describes the current `1.1.0` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects the active Codex route into `config.toml` and `auth.json`, and switches Claude Code `settings.json` profiles.
 
 ## Version
 
-Current package version: `1.0.0`
+Current package version: `1.1.0`
 
 This line targets Codex `0.134.0+`, where the active route is selected by top-level `model` plus `model_provider`. Legacy top-level `profile` and `[profiles.*]` sections may still be inspected for migration/adoption, and `--create-profile` writes one on request, but they are not the recommended managed route.
+
+`1.1.0` lets Claude Code providers share their common settings through an optional `claudeDefaults` block in `agent-provider-switch.json`. A provider record then stores only what differs, and `switch --claude` writes the two layered together. It adds `config compact --claude [--dry-run]`, `add --claude ... --full`, and the global `--full` / `--dry-run` flags. A tool home without the block behaves exactly as before. See [Shared Claude Defaults](#shared-claude-defaults).
 
 `1.0.0` renames the tool. The binary is `aps`, the package is `@minniexcode/agent-provider-switch`, the tool home is `~/.config/agent-provider-switch`, the environment variables are `APS_HOME` / `APS_CODEX_DIR` / `APS_CLAUDE_DIR`, and the state files are `agent-provider-switch.json` and `.aps.lock`. A tool home left at the pre-`1.0.0` location is moved automatically by the first command that runs. No command surface changed.
 
@@ -24,14 +26,18 @@ This line targets Codex `0.134.0+`, where the active route is selected by top-le
 | `--reveal` | Print secret values instead of masking them. Affects `show --claude` only. |
 | `--codex-dir <path>` | Target a specific Codex directory instead of `~/.codex`. Requires a path: a following token starting with `-` is refused. |
 | `--claude` | Target the Claude Code path on the commands that support it. |
+| `--full` | With `add --claude`, store every entry of the imported file instead of only those that differ from the shared defaults. |
+| `--dry-run` | With `config compact --claude`, report what would change without taking the lock or writing anything. |
 | `--help`, `-h` | Show top-level or command-specific help. |
 | `--version`, `-v` | Print the current CLI version. |
 
 `--reveal` is parsed as a **global** flag, not a per-command option. The command-option pass treats any `--flag <non-flag>` pair as a valued option, so a per-command `--reveal` would swallow the provider name that follows it. As a global flag it is matched by exact token, and both `show --claude --reveal <name>` and `show --claude <name> --reveal` work. `--json` and `--codex-dir` are stripped in the same pass.
 
-`--claude` is also global, but it is accepted only by `add`, `switch`, `list`, `show`, `current`, and `remove`. On any other command it is refused with `INVALID_ARGUMENT` naming that set. Ignoring it would answer the wrong question — `aps status --claude` would report Codex state under a flag that asked about Claude.
+`--claude` is also global, but it is accepted only by `add`, `switch`, `list`, `show`, `current`, `remove`, and `config compact`. On any other command it is refused with `INVALID_ARGUMENT` naming that set. Ignoring it would answer the wrong question — `aps status --claude` would report Codex state under a flag that asked about Claude.
 
-`--force`, `--merge`, `--overwrite`, and `--create-profile` are true boolean flags: they never consume the token after them, and they are position-independent, so `aps --claude list` resolves the same way as `aps list --claude`.
+`--full` and `--dry-run` follow the same rule for the same reason: the parser accepts a global boolean anywhere, so each is refused with `INVALID_ARGUMENT` on any command that would ignore it. `--full` applies only to `add --claude`, and `--dry-run` only to `config compact --claude`. The check runs before the Claude path is entered, so `aps switch --claude --full` is refused too. Accepted-and-ignored is the dangerous reading: `aps backups prune --dry-run` would otherwise delete real backups under a flag that promised a preview.
+
+`--force`, `--merge`, `--overwrite`, `--create-profile`, `--full`, and `--dry-run` are true boolean flags: they never consume the token after them, and they are position-independent, so `aps --claude list` resolves the same way as `aps list --claude`.
 
 One consequence is worth naming: because these tokens are torn out of `argv` before the option pass runs, a boolean flag used where an option *value* was intended becomes the literal string `"true"` rather than being rejected. In `aps edit p --note --json`, the note is recorded as the string `"true"` and `--json` still selects the JSON envelope.
 
@@ -56,9 +62,44 @@ aps current --claude
 aps list --claude
 aps show --claude copilot
 aps show --claude copilot --reveal
+aps config compact --claude --dry-run
 ```
 
-Claude providers store the full `settings.json` content as an opaque blob; switching replaces the entire file.
+Without a `claudeDefaults` block, Claude providers store the full `settings.json` content as an opaque blob, and switching replaces the entire file with it. With one, a record stores only its delta; see below.
+
+## Shared Claude Defaults
+
+Provider settings tend to overlap almost entirely. `agent-provider-switch.json` may carry a `claudeDefaults` block holding what they share, so each record stores only what is its own. The block is **written by hand** — no command creates or edits it — and keeps the existing `version` field:
+
+```json
+{
+  "version": "1.1.0",
+  "claudeDefaults": {
+    "settings": {
+      "env": {
+        "CLAUDE_CODE_USE_VERTEX": "0",
+        "CLAUDE_CODE_EFFORT_LEVEL": "XHIGH",
+        "MCP_CONNECT_TIMEOUT_MS": "30000"
+      },
+      "model": "sonnet",
+      "theme": "dark"
+    }
+  }
+}
+```
+
+Its inner shape mirrors a provider record's, so resolving a record is `merge(claudeDefaults.settings, record.settings)`.
+
+**Merge rule.** Objects merge recursively, the record wins, arrays are replaced wholesale, and `null` deletes an inherited key. `env` needs no special case: it is an object of scalars, so its keys merge one by one. The result never contains a `null` object member.
+
+Two consequences that are easy to get wrong:
+
+- **An empty object does not clear.** `"enabledPlugins": {}` over a default with entries inherits them. Dropping an inherited key takes an explicit `null`.
+- **A key the defaults set and a record omits is inherited, not missing.** So `add --claude` slimming is inheritance-first and is not a byte-preserving round trip of the imported file; `--full` is the escape hatch. What slimming guarantees is that it never changes what a switch writes: `merge(defaults, slim(defaults, x)) == merge(defaults, x)`.
+
+**Where resolution happens.** Resolution is read-side: the stored record stays a delta. `list`, `current`, `show`, the interactive selector, and `switch` resolve it, and only `switch` writes the result to `~/.claude/settings.json`. `remove` and `config compact` work on the raw records, so neither can expand the defaults into the survivors. With no `claudeDefaults` block nothing is merged and a record is written verbatim — explicit `null` members included, which are plain data until a block exists.
+
+**Validation.** A `claudeDefaults` that is not an object, a missing or non-object `settings`, or any other key under `claudeDefaults` (typically `env` placed there instead of under `settings`) is `INVALID_CONFIG`. Unknown keys are refused rather than dropped, because dropping one would leave every provider with no inherited env and no message saying why. The tool config is read on every command, so a malformed block fails all of them until it is fixed.
 
 ## Commands
 
@@ -81,7 +122,7 @@ Human output does not expose a provider-type column; the `--claude` flag selects
 Shows one provider record.
 
 - Codex path: human output masks the API key; `--json` returns the full local provider payload including `apiKey`. That is a documented automation contract and is unchanged in `0.4.1`. `--reveal` does not affect this path.
-- Claude path: `env` values whose key looks like a credential are masked, and the raw `settings` blob is omitted. `--reveal` prints the real values and includes `settings`.
+- Claude path: shows the **resolved** settings — what `switch` would write — with each entry that came from the shared defaults marked `(inherited)` and a trailing `inherited:` summary. `env` values whose key looks like a credential are masked, an inherited credential included, and the raw `settings` blob is omitted. `--json` adds `inherited`, a list of dotted paths (`env.MCP_CONNECT_TIMEOUT_MS`, `model`, ...) that carries paths only, never values. `--reveal` prints the real values and adds `settings` (resolved) and `overrides` (the stored delta).
 
 ### `current [--claude]`
 
@@ -99,14 +140,34 @@ Shows the current route summary and recognizable legacy profile view.
 
 Lists recognizable legacy config profiles with managed-state hints for adoption and diagnostics.
 
+### `config compact --claude [--dry-run]`
+
+Rewrites every stored Claude provider to the entries that differ from the shared `claudeDefaults`, so a file of full copies becomes a file of deltas.
+
+```bash
+aps config compact --claude --dry-run   # preview
+aps config compact --claude             # apply, after a backup
+```
+
+It changes only how a provider is stored. A record is resolved over the defaults whenever it is read, full or delta alike, so `switch --claude` writes the same file before and after, and `rollback` undoes the rewrite.
+
+- Requires `--claude`; Codex records are already flat.
+- Refuses with `INVALID_ARGUMENT`, naming the file, when the tool config has no `claudeDefaults` block: compacting against nothing would report success while changing nothing.
+- `--dry-run` is a separate branch that never reaches the mutation wrapper. It takes no lock, creates no backup, and leaves `claude-providers.json` byte-identical, so it succeeds while another operation holds the lock.
+- A run in which every record is already a delta takes the same early exit: no write, no backup. "Changed" is decided by deep equality, so key order alone never counts as a change and a second run always reports zero.
+- A real run re-reads the file under the lock, carries `note` and `tags` over untouched, and keeps an explicit `null` that deletes a real default — dropping it would make the deleted value reappear.
+- The payload is `{ target, dryRun, changedCount, unchangedCount, providers: [{ provider, changed, droppedPaths }] }`. `droppedPaths` are dotted paths and never values.
+
 ### `add`
 
 ```bash
 aps add <provider> --profile <model-provider-id> --model <model> --api-key <key> [--base-url <url>] [--note <text>] [--tag <tag> ...] [--create-profile]
-aps add --claude <name> --from-file <settings.json>
+aps add --claude <name> --from-file <settings.json> [--full]
 ```
 
 Adds a provider to `providers.json`, creates or updates the matching `[model_providers.<id>]` section, and backs up managed files before writing. The `--claude` form imports a complete `settings.json` into `claude-providers.json`; field-based Claude provider creation is not supported.
+
+With a `claudeDefaults` block, the `--claude` form stores only the entries that differ from it, and reports how many were dropped. `--full` keeps every entry instead, which pins them against later changes to the defaults. The record is still resolved over the defaults when read, so `--full` stores more but does not stop a key the file omits from being inherited.
 
 `--create-profile` additionally writes the matching legacy `[profiles.<id>]` section, for older Codex builds that route through it. It is the only way that section is written; the default projection never creates one.
 
@@ -122,7 +183,7 @@ aps edit <provider> [--profile <id>] [--model <model>] [--api-key <key>] [--base
 
 ### `switch [--claude]`
 
-Codex path: switches the active route to a managed provider by writing top-level `model` and `model_provider`, updating the matching model-provider section, and projecting API-key auth. Claude path: atomically replaces `~/.claude/settings.json` with the stored profile.
+Codex path: switches the active route to a managed provider by writing top-level `model` and `model_provider`, updating the matching model-provider section, and projecting API-key auth. Claude path: atomically replaces `~/.claude/settings.json` with the stored profile layered over the shared defaults, when there are any.
 
 ### `remove [--claude]`
 
@@ -229,14 +290,16 @@ There is no `2` for usage errors and no code map. An unrecognized command exited
 
 ## Current Non-Goals
 
-`1.0.0` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
+`1.1.0` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
 
-It also does not provide a redacted export mode, Claude Code plugin marketplace management, a generic target abstraction, a TTL-based lock takeover, an audit log for takeovers, or an exit-code taxonomy.
+It also does not provide a redacted export mode, Claude Code plugin marketplace management, a generic target abstraction, a TTL-based lock takeover, an audit log for takeovers, or an exit-code taxonomy. There is no command that creates or edits the `claudeDefaults` block, and no export or import of Claude provider records.
 
 ## Fact Sources
 
 Current:
 
+- [PRD 1.1.0](./PRD/agent-provider-switch-prd-v1.1.0.md)
+- [Design 1.1.0](./Design/agent-provider-switch-v1.1.0-design.md)
 - [PRD 1.0.0](./PRD/agent-provider-switch-prd-v1.0.0.md)
 - [Design 1.0.0](./Design/agent-provider-switch-v1.0.0-design.md)
 - [PRD 0.4.1](./PRD/agent-provider-switch-prd-v0.4.1.md)

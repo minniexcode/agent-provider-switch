@@ -2,10 +2,12 @@
 
 This file is the current AI-facing fact sheet for `@minniexcode/agent-provider-switch`.
 
-Current repository version: `1.0.0`
+Current repository version: `1.1.0`
 
 Current fact sources:
 
+- `docs/PRD/agent-provider-switch-prd-v1.1.0.md`
+- `docs/Design/agent-provider-switch-v1.1.0-design.md`
 - `docs/PRD/agent-provider-switch-prd-v1.0.0.md`
 - `docs/Design/agent-provider-switch-v1.0.0-design.md`
 - `docs/PRD/agent-provider-switch-prd-v0.4.1.md`
@@ -24,9 +26,9 @@ Current fact sources:
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects Codex `model_provider` sections, writes the active top-level `model` / `model_provider` route, switches Claude Code `settings.json` profiles, and maintains backups around mutating commands.
 
-In `1.0.0`, there are two managed workflows:
+In `1.1.0`, there are two managed workflows:
 1. **Codex providers** — OpenAI-compatible provider records projected into `config.toml` / `auth.json`.
-2. **Claude Code providers** (via `--claude` flag) — full `settings.json` profiles stored and switched atomically.
+2. **Claude Code providers** (via `--claude` flag) — `settings.json` profiles stored as deltas over an optional shared `claudeDefaults` block, and switched atomically.
 
 ## Primary Workflow (Codex)
 
@@ -43,18 +45,31 @@ aps doctor
 ## Claude Code Workflow
 
 ```bash
-aps add --claude <name> --from-file <settings.json>
+aps add --claude <name> --from-file <settings.json> [--full]
 aps switch --claude <name>
 aps current --claude
 aps list --claude
 aps show --claude <name>
 aps show --claude <name> --reveal
 aps remove --claude <name> --force
+aps config compact --claude [--dry-run]
 ```
 
-Claude providers store the entire `settings.json` as an opaque blob. Switching replaces the whole file atomically with backup/rollback.
+Without a `claudeDefaults` block, Claude providers store the entire `settings.json` as an opaque blob and switching replaces the whole file atomically with backup/rollback. With one, each record stores a delta and a switch writes `merge(defaults, record)`.
 
-`show --claude` masks env values whose key matches `SECRET_KEY_PATTERN` and omits the raw `settings` blob, in both human and `--json` output. The payload carries `revealed` so renderers can tell masked from unmasked without re-deriving it. `--reveal` is a global flag that prints the real values and includes `settings`; it affects the Claude `show` path only, and is never applied by default. Codex `show --json` still returns the full `apiKey` — that is a documented automation contract and is unchanged.
+### Shared Claude defaults
+
+`agent-provider-switch.json` may carry `claudeDefaults: { settings: { ... } }`. It is hand-written: no command creates or edits it, and `config compact` refuses when it is absent. A malformed block (an unknown key under `claudeDefaults`, or a non-object `settings`) is `INVALID_CONFIG` for every command, because the tool config is read on every dispatch; unknown keys are refused rather than dropped.
+
+Merge rule: plain objects merge recursively, the record wins, arrays are replaced wholesale, `null` deletes an inherited key. `env` has no special case. An empty object does **not** clear an inherited object — only `null` does.
+
+- Resolution is read-side. The stored record stays a delta; `list`, `current`, `show`, the interactive selector, and `switch` resolve it, and only `switch` writes the result to `~/.claude/settings.json`. `remove` and `config compact` work on the raw records so a delete cannot expand the defaults into the survivors.
+- With no defaults block nothing is merged and a record is written verbatim, explicit `null` members included.
+- `add --claude --from-file` slims by default (drops entries deep-equal to the defaults); `--full` keeps every entry, which pins them against later changes to the defaults. Slimming is inheritance-first: a default the file omits is inherited, so it is not a byte-preserving round trip. The invariant is `merge(defaults, slim(defaults, x)) == merge(defaults, x)`.
+- `config compact --claude` rewrites every record to its delta. It changes storage, never what a switch writes. `--dry-run` takes no lock and writes nothing; a run with nothing to change takes no backup. It is reversible through `rollback`.
+- `show --claude` prints the resolved settings, marks inherited entries, and lists inherited dotted paths in `--json` (`inherited`) — paths only, never values. `--reveal` returns `settings` (resolved) plus `overrides` (stored).
+
+`show --claude` masks env values whose key matches `SECRET_KEY_PATTERN` and omits the raw `settings` blob, in both human and `--json` output. That includes a credential inherited from the defaults. The payload carries `revealed` so renderers can tell masked from unmasked without re-deriving it. `--reveal` is a global flag that prints the real values and includes `settings`; it affects the Claude `show` path only, and is never applied by default. Codex `show --json` still returns the full `apiKey` — that is a documented automation contract and is unchanged.
 
 ## Current Command Surface
 
@@ -69,7 +84,8 @@ current [--claude]
 status
 config show
 config list-profiles
-add [--claude]
+config compact --claude [--dry-run]
+add [--claude] [--full]
 edit
 switch [--claude]
 remove [--claude]
@@ -85,7 +101,9 @@ setup
 
 `setup` is deprecated and only points callers to `init` or `migrate`.
 
-`--claude` is accepted only by `add`, `switch`, `list`, `show`, `current`, and `remove`. On any other command it is refused with `INVALID_ARGUMENT` naming the supported set, rather than silently reported as Codex state.
+`--claude` is accepted only by `add`, `switch`, `list`, `show`, `current`, `remove`, and `config compact`. On any other command it is refused with `INVALID_ARGUMENT` naming the supported set, rather than silently reported as Codex state.
+
+`--full` and `--dry-run` are global boolean flags in the parser but are refused with `INVALID_ARGUMENT` anywhere they would be ignored: `--full` applies only to `add --claude`, `--dry-run` only to `config compact --claude`. The check runs before the Claude early-return, so `switch --claude --full` is refused too. Accepted-and-ignored is the dangerous reading — `aps backups prune --dry-run` would otherwise delete real backups under a flag that promised a preview.
 
 All commands accept `--json` where the parser supports it, and `--codex-dir <path>`. `--codex-dir` refuses a following token that starts with `-` instead of taking it as the path value.
 
@@ -137,8 +155,10 @@ Every write command takes one lock (`<toolHome>/.aps.lock`, shared by both targe
 
 ## Current Non-Goals
 
-`1.0.0` does not include:
+`1.1.0` does not include:
 
+- A command that creates or edits the `claudeDefaults` block.
+- Export or import of Claude provider records (both commands are Codex-only).
 - Copilot SDK integration.
 - GitHub device-flow login.
 - HTTP proxy bridge or local bridge worker runtime.

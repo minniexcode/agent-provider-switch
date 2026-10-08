@@ -4,7 +4,9 @@
 
 它把 `agent-provider-switch` 自己的工具状态和目标运行时目录分开，让 provider 管理、备份和运行时投影通过明确命令完成，而不是手工编辑文件。
 
-当前包版本：`1.0.0`
+当前包版本：`1.1.0`
+
+`1.1.0` 让 Claude Code provider 共享公共设置。`agent-provider-switch.json` 中的 `claudeDefaults` 块保存所有 provider 重复出现的设置，每个 provider 记录只存自己独有的部分，`aps switch --claude` 把两层叠加后写入。`aps config compact --claude` 把已有记录改写成这种形式，`aps add --claude` 现在也以这种形式保存新记录。这一切都是可选的：没有这个块的工具 home 行为与以前完全一致。详见[共享 Claude 默认设置](#共享-claude-默认设置)。
 
 `1.0.0` 是改名版本。仓库、npm 包名、可执行文件名（`aps`）、工具 home（`~/.config/agent-provider-switch`）、环境变量（`APS_*`）和状态文件名在同一次破坏性发布中一起迁移。留在 `1.0.0` 之前位置的工具 home 会被第一条运行的命令自动移动到新位置，升级不需要任何手工步骤。旧的可执行文件名直接移除，不保留别名。
 
@@ -61,13 +63,76 @@ aps show --claude copilot
 aps show --claude copilot --reveal
 ```
 
-- `add --claude` 导入完整的 Claude Code `settings.json` 为一个命名配置。
-- `switch --claude` 原子替换 `~/.claude/settings.json` 为存储的配置。
+- `add --claude` 导入完整的 Claude Code `settings.json` 为一个命名配置。存在 `claudeDefaults` 块时只保存与它不同的条目，`--full` 则保留全部条目。
+- `switch --claude` 原子替换 `~/.claude/settings.json` 为存储的配置；如果有共享默认设置，则叠加在其上。
 - `current --claude` 检测当前活跃的 Claude 配置。
 - `list --claude` 显示所有 Claude 配置及活跃标记。
-- `show --claude` 显示单个配置，secret 类 env 值被掩码，原始 `settings` blob 不返回。
+- `show --claude` 显示单个配置解析后的结果，标出哪些条目来自共享默认设置，secret 类 env 值被掩码，原始 `settings` blob 不返回。
 
-Claude provider 存储完整的 `settings.json` 内容（env 变量、模型映射、权限、插件），切换时替换整个文件。
+没有 `claudeDefaults` 块时，Claude provider 存储完整的 `settings.json` 内容（env 变量、模型映射、权限、插件），切换时替换整个文件。设置高度重叠的 provider 更适合存成差异，见下一节。
+
+### 共享 Claude 默认设置
+
+各 provider 的设置往往几乎完全重叠：同样的十几个 env 开关、同样的主题，常常还有同样的权限块。把公共部分放进工具配置，每个 provider 记录只保留自己独有的内容。
+
+`~/.config/agent-provider-switch/agent-provider-switch.json` —— 保留已有的 `version` 字段，手工加入这个块；没有任何命令会创建它：
+
+```json
+{
+  "version": "1.1.0",
+  "claudeDefaults": {
+    "settings": {
+      "env": {
+        "CLAUDE_CODE_USE_VERTEX": "0",
+        "CLAUDE_CODE_USE_BEDROCK": "0",
+        "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+        "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "false",
+        "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "true",
+        "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "0",
+        "CLAUDE_CODE_EFFORT_LEVEL": "XHIGH",
+        "MCP_CONNECT_TIMEOUT_MS": "30000"
+      },
+      "model": "sonnet",
+      "theme": "dark",
+      "editorMode": "normal",
+      "autoCompactEnabled": true
+    }
+  }
+}
+```
+
+这样每个 provider 只需写自己的条目：
+
+```json
+"freemodel": {
+  "settings": {
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://cc-t2.freemodel.dev",
+      "ANTHROPIC_API_KEY": "...",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5.5"
+    }
+  },
+  "note": "freemodel claude code"
+}
+```
+
+合并规则只有一条：**对象递归合并，provider 的值优先，数组整体替换，`null` 删除继承来的键。** `env` 不需要特殊处理 —— 它只是一个由标量组成的对象，所以其中的键逐个合并。
+
+有两点最好提前知道，以免被意外到：
+
+- **空对象不会清空。** 默认设置里 `enabledPlugins` 有内容时，provider 写 `"enabledPlugins": {}` 仍然继承它们。要丢掉某个继承来的键，请把它设为 `null`。
+- **默认设置里有、provider 里没写的键，是继承而来，不是缺失。** 这正是设计目的，但意味着 provider 存储的设置不再是全部内容；`aps show --claude <name>` 打印解析后的结果并标出每个继承条目，`--json` 会列出继承路径（只有路径，绝不含值）。
+
+转换你已有的 provider，先预览：
+
+```bash
+aps config compact --claude --dry-run   # 只报告将发生的变化；不加锁、不写入
+aps config compact --claude             # 备份后把每条记录改写成差异形式
+```
+
+压缩只改变 provider 的存储方式。记录在每次读取时都会叠加在默认设置之上，所以 `switch --claude` 在压缩前后写出的文件相同，`aps rollback` 也能撤销这次改写。格式错误的 `claudeDefaults` 块 —— 例如把 `env` 直接放在它下面而不是 `settings` 下面 —— 会以 `INVALID_CONFIG` 被拒绝，而不是被静默忽略；由于每条命令都会读取工具配置，修复之前所有命令都会被它拦住。
 
 ### 查看 secret
 
@@ -90,7 +155,7 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 
 ## 命令面
 
-`1.0.0` 当前命令：
+`1.1.0` 当前命令：
 
 ```text
 aps init
@@ -101,8 +166,9 @@ aps current [--claude]
 aps status
 aps config show
 aps config list-profiles
+aps config compact --claude [--dry-run]
 aps add <provider> --profile <id> --model <model> --api-key <key> [--base-url <url>] [--create-profile]
-aps add --claude <name> --from-file <settings.json>
+aps add --claude <name> --from-file <settings.json> [--full]
 aps edit <provider> [options] [--create-profile]
 aps switch <provider> [--claude]
 aps remove <provider> [--claude] --force
@@ -209,8 +275,10 @@ aps backups prune --keep 5
 
 ## 当前非目标
 
-`1.0.0` 不实现也不预留以下 runtime 代码路径：
+`1.1.0` 不实现也不预留以下 runtime 代码路径：
 
+- 创建或编辑 `claudeDefaults` 块的命令。它需要手工编写；块不存在时 `config compact` 会拒绝执行，而不是去猜哪些键是公共的。
+- Claude provider 记录的导出与导入。这两个命令只支持 Codex。
 - GitHub Copilot SDK 集成。
 - GitHub device-flow 登录。
 - HTTP proxy bridge 或本地 bridge worker 命令。
@@ -241,6 +309,8 @@ npm pack --dry-run
 
 ## 当前事实源
 
+- [PRD 1.1.0](./docs/PRD/agent-provider-switch-prd-v1.1.0.md)
+- [Design 1.1.0](./docs/Design/agent-provider-switch-v1.1.0-design.md)
 - [PRD 1.0.0](./docs/PRD/agent-provider-switch-prd-v1.0.0.md)
 - [Design 1.0.0](./docs/Design/agent-provider-switch-v1.0.0-design.md)
 - [PRD 0.4.1](./docs/PRD/agent-provider-switch-prd-v0.4.1.md)

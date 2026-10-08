@@ -4,7 +4,9 @@
 
 It keeps `agent-provider-switch` tool state separate from the target runtime directories, so managed providers, backups, and runtime projection are handled through explicit commands instead of manual file edits.
 
-Current package version: `1.0.0`
+Current package version: `1.1.0`
+
+`1.1.0` lets Claude Code providers share their common settings. A `claudeDefaults` block in `agent-provider-switch.json` holds the settings every provider repeats, each provider record stores only what differs, and `aps switch --claude` writes the two layered together. `aps config compact --claude` rewrites existing records into that form, and `aps add --claude` now stores new ones that way. Nothing is required: a tool home without the block behaves exactly as before. See [Shared Claude defaults](#shared-claude-defaults).
 
 `1.0.0` renames the tool. The repository, the npm package, the binary (`aps`), the tool home (`~/.config/agent-provider-switch`), the environment variables (`APS_*`), and the state filenames all move together in one breaking release. A tool home left at the pre-`1.0.0` location is moved to the new one automatically by the first command that runs, so upgrading needs no manual step. The old binary name is gone rather than aliased.
 
@@ -65,13 +67,76 @@ aps show --claude copilot --reveal
 
 What the workflow does:
 
-- `add --claude` imports a complete Claude Code `settings.json` as a named profile into `claude-providers.json`.
-- `switch --claude` atomically replaces `~/.claude/settings.json` with the stored profile.
+- `add --claude` imports a complete Claude Code `settings.json` as a named profile into `claude-providers.json`. With a `claudeDefaults` block it stores only the entries that differ from it; `--full` keeps every entry.
+- `switch --claude` atomically replaces `~/.claude/settings.json` with the stored profile, layered over the shared defaults when there are any.
 - `current --claude` detects which registered profile matches the active settings.
 - `list --claude` shows all Claude profiles with an active indicator.
-- `show --claude` prints one profile with secret env values masked and the raw `settings` blob withheld.
+- `show --claude` prints one profile as it resolves, marks which entries came from the shared defaults, masks secret env values, and withholds the raw `settings` blob.
 
-Claude providers store the full `settings.json` content (env vars, model mappings, permissions, plugins) as an opaque blob. Switching replaces the entire file.
+Without a `claudeDefaults` block, Claude providers store the full `settings.json` content (env vars, model mappings, permissions, plugins) as an opaque blob, and switching replaces the entire file with it. Providers whose settings overlap heavily are better stored as deltas, as described next.
+
+### Shared Claude defaults
+
+Provider settings tend to overlap almost entirely: the same dozen env flags, the same theme, often the same permissions block. Put what they share in the tool config, and let each provider record hold only what is its own.
+
+`~/.config/agent-provider-switch/agent-provider-switch.json` — keep the existing `version` field and add the block by hand; no command creates it:
+
+```json
+{
+  "version": "1.1.0",
+  "claudeDefaults": {
+    "settings": {
+      "env": {
+        "CLAUDE_CODE_USE_VERTEX": "0",
+        "CLAUDE_CODE_USE_BEDROCK": "0",
+        "DISABLE_NON_ESSENTIAL_MODEL_CALLS": "1",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+        "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+        "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "false",
+        "CLAUDE_CODE_DISABLE_TERMINAL_TITLE": "true",
+        "CLAUDE_CODE_ENABLE_AWAY_SUMMARY": "0",
+        "CLAUDE_CODE_EFFORT_LEVEL": "XHIGH",
+        "MCP_CONNECT_TIMEOUT_MS": "30000"
+      },
+      "model": "sonnet",
+      "theme": "dark",
+      "editorMode": "normal",
+      "autoCompactEnabled": true
+    }
+  }
+}
+```
+
+A provider then needs only its own entries:
+
+```json
+"freemodel": {
+  "settings": {
+    "env": {
+      "ANTHROPIC_BASE_URL": "https://cc-t2.freemodel.dev",
+      "ANTHROPIC_API_KEY": "...",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-5.5"
+    }
+  },
+  "note": "freemodel claude code"
+}
+```
+
+Merge rule, in one line: **objects merge recursively, the provider wins, arrays are replaced wholesale, and `null` deletes an inherited key.** `env` needs no special handling — it is just an object of scalars, so its keys merge one by one.
+
+Two consequences worth knowing before they surprise you:
+
+- **An empty object does not clear.** `"enabledPlugins": {}` over a default with entries still inherits them. To drop an inherited key, set it to `null`.
+- **A key the defaults set and a provider omits is inherited, not missing.** That is the point, but it means a provider's stored settings are no longer the whole story; `aps show --claude <name>` prints the resolved result and marks each inherited entry, and `--json` lists the inherited paths (paths only, never values).
+
+To convert providers you already have, preview first:
+
+```bash
+aps config compact --claude --dry-run   # reports what would change; takes no lock, writes nothing
+aps config compact --claude             # rewrites each record to its delta, after a backup
+```
+
+Compaction changes only how a provider is stored. Records are resolved over the defaults whenever they are read, so `switch --claude` writes the same file before and after, and `aps rollback` undoes the rewrite. A malformed `claudeDefaults` block — for example `env` placed directly under it instead of under `settings` — is refused with `INVALID_CONFIG` rather than silently ignored, and because the tool config is read by every command, it blocks all of them until fixed.
 
 ### Reading secrets back
 
@@ -101,7 +166,7 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 
 ## Commands
 
-Current `1.0.0` command surface:
+Current `1.1.0` command surface:
 
 ```text
 aps init
@@ -112,8 +177,9 @@ aps current [--claude]
 aps status
 aps config show
 aps config list-profiles
+aps config compact --claude [--dry-run]
 aps add <provider> --profile <id> --model <model> --api-key <key> [--base-url <url>] [--create-profile]
-aps add --claude <name> --from-file <settings.json>
+aps add --claude <name> --from-file <settings.json> [--full]
 aps edit <provider> [options] [--create-profile]
 aps switch <provider> [--claude]
 aps remove <provider> [--claude] --force
@@ -220,8 +286,10 @@ A directory that any surviving manifest still references is never deleted, so a 
 
 ## Current Non-Goals
 
-`1.0.0` does not implement or reserve runtime code paths for:
+`1.1.0` does not implement or reserve runtime code paths for:
 
+- A command that creates or edits the `claudeDefaults` block. It is written by hand; `config compact` refuses when it is absent rather than guessing which keys are shared.
+- Export or import of Claude provider records. Both commands are Codex-only.
 - GitHub Copilot SDK integration.
 - GitHub device-flow login.
 - HTTP proxy bridge or local bridge worker commands.
@@ -254,6 +322,8 @@ npm pack --dry-run
 
 Current fact sources:
 
+- [PRD 1.1.0](./docs/PRD/agent-provider-switch-prd-v1.1.0.md)
+- [Design 1.1.0](./docs/Design/agent-provider-switch-v1.1.0-design.md)
 - [PRD 1.0.0](./docs/PRD/agent-provider-switch-prd-v1.0.0.md)
 - [Design 1.0.0](./docs/Design/agent-provider-switch-v1.0.0-design.md)
 - [PRD 0.4.1](./docs/PRD/agent-provider-switch-prd-v0.4.1.md)

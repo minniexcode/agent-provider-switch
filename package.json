@@ -1,6 +1,6 @@
 {
   "name": "@minniexcode/agent-provider-switch",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Local-first CLI for managing and switching Codex and Claude Code provider routing.",
   "license": "MIT",
   "type": "commonjs",

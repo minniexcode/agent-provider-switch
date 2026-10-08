@@ -1,6 +1,6 @@
 # Testing
 
-Current version: `1.0.0`
+Current version: `1.1.0`
 
 There are two suites, and they cover different things on purpose.
 
@@ -49,12 +49,12 @@ npm pack --dry-run
 
 ## Required Coverage
 
-Focus on the dual-target contract, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
+Focus on the dual-target contract, the `1.1.0` shared-defaults guarantees, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
 
-- Version metadata is `1.0.0` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
-- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.0.0.md` and `docs/Design/agent-provider-switch-v1.0.0-design.md`, and the PRD/Design pair exists for every version on the `0.3.0 → 1.0.0` line.
+- Version metadata is `1.1.0` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
+- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.1.0.md` and `docs/Design/agent-provider-switch-v1.1.0-design.md`, and the PRD/Design pair exists for every version on the `0.3.1 → 1.1.0` line.
 - The legacy tool home moves once, and only when `APS_HOME` is unset, the new home is absent, and the old lock has no live owner.
-- Help exposes only current commands: `init`, `migrate`, `list`, `show`, `current`, `status`, `config show`, `config list-profiles`, `add`, `edit`, `switch`, `remove`, `import`, `export`, `backups list`, `backups prune`, `unlock`, `rollback`, `doctor`, and deprecated `setup`.
+- Help exposes only current commands: `init`, `migrate`, `list`, `show`, `current`, `status`, `config show`, `config list-profiles`, `config compact`, `add`, `edit`, `switch`, `remove`, `import`, `export`, `backups list`, `backups prune`, `unlock`, `rollback`, `doctor`, and deprecated `setup`.
 - Fresh provider flow: `init -> add -> switch -> status -> doctor`.
 - Base URL drift diagnostics.
 - Ambiguous active provider mapping.
@@ -71,6 +71,19 @@ Focus on the dual-target contract, the `1.0.0` migration guarantees, the `0.4.1`
 - On POSIX, a managed write lands at `0600` for files and `0700` for created directories.
 - The suite runs green with no `dev-codex/` present; Codex fixtures are generated per test by `makeCodexFixture()`.
 - The Claude provider workflow (`add`, `switch`, `list`, `current`, `show`, `remove`) runs end to end against a `APS_CLAUDE_DIR` that is verified to sit inside a temporary directory.
+
+### Shared Claude defaults
+
+Covered by `tests/tool-config.spec.js`, `tests/claude-settings-merge.spec.js`, `tests/claude-defaults.spec.js`, and `tests/claude-config-compact.spec.js`. Each guarantee below was checked by mutating the built module and confirming a spec fails; a spec that stays green under the matching mutation is not pinning anything.
+
+- `claudeDefaults` survives a tool-config read and write, an absent block stays absent, and an unknown key under it is refused rather than dropped. The validator rebuilds the object, so this is the test that fails if the block is ever erased again.
+- The merge rule holds: objects merge recursively, the record wins, arrays are replaced wholesale, `null` deletes, an empty object inherits instead of clearing, and a `null` default reads as absent. Randomized, seeded properties pin `merge(d, diff(d, x)) == merge(d, x)` (slimming never changes what a switch writes), idempotent `diff`, no `null` member in a merged result, and that every reported inherited path carries the default's value.
+- `switch --claude` writes the resolved settings while the stored record stays a delta; with no defaults block a record is written verbatim, explicit `null` members included.
+- `list`, `current`, `show`, and the interactive selector resolve a delta record, so the active marker and the `model` / `baseUrl` columns still work. `remove` does not expand the defaults into the surviving records.
+- `show --claude` masks an inherited credential, reports inherited paths without values, and `--reveal` returns `settings` (resolved) plus `overrides` (stored).
+- `add --claude` slims by default and `--full` keeps every entry, wherever `--full` sits relative to the provider name.
+- `--full` and `--dry-run` are refused where they would be ignored, including on a Claude-capable command (`switch --claude --full`), which is why the check runs before the Claude early-return.
+- `config compact --claude` leaves what a switch writes unchanged, carries `note` and `tags` over, keeps a `null` that deletes a real default, is a no-op the second time (no write, no backup), and is reversible through `rollback`. `--dry-run` leaves the file byte-identical, creates no backup, and succeeds while a live lock is held — the control being that a real run is refused with `LOCK_CONFLICT` under the same lock.
 
 ### Recovery
 
