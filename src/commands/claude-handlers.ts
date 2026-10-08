@@ -69,6 +69,7 @@ export async function handleClaudeCommand(
       const fromFile = getSingleOption(parsed.commandOptions, "--from-file");
       const note = getSingleOption(parsed.commandOptions, "--note");
       const tags = parsed.commandOptions.get("--tag") ?? [];
+      const full = hasFlag(parsed.commandOptions, "--full");
 
       if (!providerName) {
         if (ctx.options.json || !runtime.isInteractive()) {
@@ -108,6 +109,8 @@ export async function handleClaudeCommand(
           latestBackupPath,
           claudeProvidersPath: claudePaths.claudeProvidersPath,
           providerName: resolvedName,
+          defaults,
+          full,
           fromFile: answer.fromFile.trim(),
           note: note ?? undefined,
           tags: tags.length > 0 ? tags : undefined,
@@ -120,6 +123,8 @@ export async function handleClaudeCommand(
         latestBackupPath,
         claudeProvidersPath: claudePaths.claudeProvidersPath,
         providerName: resolvedName,
+        defaults,
+        full,
         fromFile,
         note: note ?? undefined,
         tags: tags.length > 0 ? tags : undefined,

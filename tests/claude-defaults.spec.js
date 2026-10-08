@@ -268,5 +268,115 @@ module.exports = {
         });
       },
     },
+    {
+      name: "add slims the imported file to a delta, and switching it writes the same settings as the file",
+      async run() {
+        // The imported file is the full effective settings, so slimming has real work to do.
+        await withClaudeEnv(EXPECTED_EFFECTIVE, async ({ toolHomeDir, claudeDir, importFile }) => {
+          setClaudeDefaults(toolHomeDir, DEFAULTS_SETTINGS);
+
+          const added = await runClaude(toolHomeDir, ["add", "--claude", "delta", "--from-file", importFile, "--json"]);
+          assert.equal(added.payload.ok, true, added.stderr);
+
+          // Only what is this provider's own is stored.
+          assert.deepEqual(readRegistry(toolHomeDir).providers.delta.settings, DELTA.settings);
+          assert.equal(added.payload.data.model, "sonnet");
+          assert.equal(added.payload.data.droppedPaths.length, 7);
+
+          // Slimming is invisible to the one thing that matters: what a switch writes.
+          await runClaude(toolHomeDir, ["switch", "--claude", "delta", "--json"]);
+          assert.deepEqual(readLiveSettings(claudeDir), EXPECTED_EFFECTIVE);
+        });
+      },
+    },
+    {
+      name: "add --full keeps every entry of the file, wherever --full sits",
+      async run() {
+        await withClaudeEnv(EXPECTED_EFFECTIVE, async ({ toolHomeDir, importFile }) => {
+          setClaudeDefaults(toolHomeDir, DEFAULTS_SETTINGS);
+
+          // `--full` before the name: a boolean flag must not swallow the token after it.
+          const added = await runClaude(toolHomeDir, ["add", "--claude", "--full", "pinned", "--from-file", importFile, "--json"]);
+          assert.equal(added.payload.ok, true, added.stderr);
+
+          assert.deepEqual(readRegistry(toolHomeDir).providers.pinned.settings, EXPECTED_EFFECTIVE);
+          assert.deepEqual(added.payload.data.droppedPaths, []);
+        });
+      },
+    },
+    {
+      name: "add stores the file as it came when there is no defaults block",
+      async run() {
+        await withClaudeEnv(EXPECTED_EFFECTIVE, async ({ toolHomeDir, importFile }) => {
+          const added = await runClaude(toolHomeDir, ["add", "--claude", "plain", "--from-file", importFile, "--json"]);
+          assert.equal(added.payload.ok, true, added.stderr);
+
+          assert.deepEqual(readRegistry(toolHomeDir).providers.plain.settings, EXPECTED_EFFECTIVE);
+          assert.deepEqual(added.payload.data.droppedPaths, []);
+        });
+      },
+    },
+    {
+      name: "add is inheritance-first: a default the file omits is inherited, not lost",
+      async run() {
+        const sparse = { env: { ANTHROPIC_BASE_URL: "https://sparse.example" } };
+        await withClaudeEnv(sparse, async ({ toolHomeDir, claudeDir, importFile }) => {
+          setClaudeDefaults(toolHomeDir, DEFAULTS_SETTINGS);
+
+          await runClaude(toolHomeDir, ["add", "--claude", "sparse", "--from-file", importFile, "--json"]);
+          assert.deepEqual(readRegistry(toolHomeDir).providers.sparse.settings, sparse);
+
+          await runClaude(toolHomeDir, ["switch", "--claude", "sparse", "--json"]);
+          const live = readLiveSettings(claudeDir);
+          // The file never mentioned a model or a theme; the defaults supply them. That is the
+          // feature, and it is also why slimming is not a byte-preserving round trip.
+          assert.equal(live.model, "sonnet");
+          assert.equal(live.theme, "dark");
+          assert.equal(live.env.ANTHROPIC_BASE_URL, "https://sparse.example");
+        });
+      },
+    },
+    {
+      name: "add's human output says the record was slimmed, and how to keep everything",
+      async run() {
+        await withClaudeEnv(EXPECTED_EFFECTIVE, async ({ toolHomeDir, importFile }) => {
+          setClaudeDefaults(toolHomeDir, DEFAULTS_SETTINGS);
+
+          const result = await runBuiltCli({ toolHomeDir, args: ["add", "--claude", "delta", "--from-file", importFile] });
+          assert.equal(result.status, 0, result.stderr);
+          assert.match(result.stdout, /stored as a delta: 7 entries matched the claude defaults/);
+          assert.match(result.stdout, /pass --full to keep them/);
+        });
+      },
+    },
+    {
+      name: "--full is refused where it would be ignored, instead of being silently accepted",
+      async run() {
+        await withClaudeEnv({}, async ({ toolHomeDir }) => {
+          writeRegistry(toolHomeDir, { delta: DELTA });
+
+          // A Claude-capable command that has no use for it: the Claude early-return must not
+          // let it through.
+          const onSwitch = await runClaude(toolHomeDir, ["switch", "--claude", "delta", "--full", "--json"]);
+          assert.equal(onSwitch.status, 1);
+          assert.equal(onSwitch.payload.error.code, "INVALID_ARGUMENT");
+          assert.deepEqual(onSwitch.payload.error.details.supportedCommands, ["add"]);
+
+          // The right command without the target it applies to.
+          const onCodexAdd = await runClaude(toolHomeDir, ["add", "somename", "--full", "--json"]);
+          assert.equal(onCodexAdd.status, 1);
+          assert.equal(onCodexAdd.payload.error.code, "INVALID_ARGUMENT");
+          assert.match(onCodexAdd.payload.error.message, /only applies together with --claude/);
+
+          // A command that never heard of it.
+          const onList = await runClaude(toolHomeDir, ["backups", "list", "--full", "--json"]);
+          assert.equal(onList.status, 1);
+          assert.equal(onList.payload.error.code, "INVALID_ARGUMENT");
+
+          // Nothing was written by any of them.
+          assert.deepEqual(readRegistry(toolHomeDir).providers, { delta: DELTA });
+        });
+      },
+    },
   ],
 };

@@ -43,7 +43,8 @@ import { createClaudePaths } from "../storage/claude-paths";
 import { createCodexPaths, resolveLockPath } from "../storage/codex-paths";
 import { mergeProviders, readProvidersFileIfExists } from "../storage/providers-repo";
 import { getSingleOption, hasFlag } from "./args";
-import { getClaudeCommandNames, handleClaudeCommand, isClaudeCommand, supportsClaudeTarget } from "./claude-handlers";
+import { handleClaudeCommand, isClaudeCommand } from "./claude-handlers";
+import { assertFlagsApply } from "./flag-guards";
 import { CommandExecutionContext, ParsedCommand } from "./types";
 
 /**
@@ -54,19 +55,13 @@ export async function handleRegisteredCommand(
   parsed: ParsedCommand,
   runtime = createPromptRuntime()
 ): Promise<import("../app/types").CommandResult> {
+  // Refuse a flag the command would ignore before anything else runs — including the Claude
+  // early-return below, which would otherwise let `switch --claude --full` through. See
+  // `flag-guards.ts` for why accepted-and-ignored is the dangerous reading.
+  assertFlagsApply(ctx.command, parsed.commandOptions);
+
   if (isClaudeCommand(ctx.command, parsed.commandOptions)) {
     return handleClaudeCommand(ctx, parsed, runtime);
-  }
-
-  // `--claude` is a global boolean, so the parser accepts it on any command. Ignoring it when the
-  // command has no Claude path would answer the wrong question: `aps status --claude` would
-  // report Codex state under a flag that asked about Claude, and nothing in the output would say
-  // so. Refused instead, naming the commands that do support it.
-  if (parsed.commandOptions.has("--claude") && !supportsClaudeTarget(ctx.command)) {
-    throw cliError("INVALID_ARGUMENT", `"${ctx.command}" does not support --claude.`, {
-      command: ctx.command,
-      supportedCommands: getClaudeCommandNames(),
-    });
   }
 
   // The lock lives in the tool home rather than in a Codex directory, so unlock has to run

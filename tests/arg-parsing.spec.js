@@ -180,7 +180,7 @@ module.exports = {
         for (const flag of parserFlags) {
           assert.ok(declared.has(flag), `${flag} is stripped by the parser but declared by no command`);
         }
-        assert.deepEqual([...parserFlags].sort(), ["--claude", "--create-profile", "--force", "--merge", "--overwrite"]);
+        assert.deepEqual([...parserFlags].sort(), ["--claude", "--create-profile", "--force", "--full", "--merge", "--overwrite"]);
       },
     },
     {

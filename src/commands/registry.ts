@@ -167,10 +167,10 @@ export const COMMANDS: CommandDefinition[] = [
     summary: "Add a managed provider.",
     usage: [
       "aps add <provider> --profile <model-provider-id> --model <name> --api-key <key> [--base-url <url>] [--note <text>] [--tag <tag> ...]",
-      "aps add --claude <name> --from-file <settings.json> [--note <text>] [--tag <tag> ...]",
+      "aps add --claude <name> --from-file <settings.json> [--full] [--note <text>] [--tag <tag> ...]",
       "aps add [--profile <model-provider-id>] [--model <name>] [--api-key <key>] [--base-url <url>] [--note <text>] [--tag <tag> ...] [--create-profile]",
     ],
-    booleanFlags: ["--claude", "--create-profile"],
+    booleanFlags: ["--claude", "--create-profile", "--full"],
     details: [
       "Prompts only for missing required values when stdin/stdout are TTYs and --json is not set.",
       "Interactive add collects provider name, model_provider id, model, and apiKey progressively as plain text inputs.",
@@ -180,10 +180,13 @@ export const COMMANDS: CommandDefinition[] = [
       "--profile is a CLI alias for the stored model_provider id.",
       "The command projects only model_providers sections unless --create-profile is passed, which also writes the matching legacy profiles section.",
       "Use --claude to add a Claude Code provider profile from an existing settings file.",
+      "When agent-provider-switch.json has a claudeDefaults block, --claude stores only the entries that differ from it, so the record stays a delta. A key the file omits is inherited from the defaults rather than lost.",
+      "--full (Claude only) keeps every entry of the file instead of dropping those equal to the defaults. That pins them against later changes to the defaults; the record is still resolved over the defaults when read.",
     ],
     examples: [
       "aps add packycode --profile packycode --model gpt-5 --api-key sk-xxx --base-url https://api.example/v1",
       "aps add --claude copilot --from-file ~/.claude/settings-copilot.json",
+      "aps add --claude copilot --from-file ~/.claude/settings-copilot.json --full",
       "aps add",
     ],
   },

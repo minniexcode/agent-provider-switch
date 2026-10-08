@@ -468,11 +468,16 @@ function renderClaudeHumanSuccess(command: string, data: Record<string, unknown>
       if (data.baseUrl) lines.push(`  base URL: ${String(data.baseUrl)}`);
       if (data.backupPath) lines.push(`  backup: ${String(data.backupPath)}`);
       break;
-    case "add":
+    case "add": {
       lines.push(`Added Claude provider "${String(data.provider ?? "")}".`);
       if (data.model) lines.push(`  model: ${String(data.model)}`);
+      const dropped = Array.isArray(data.droppedPaths) ? data.droppedPaths.length : 0;
+      if (dropped > 0) {
+        lines.push(`  stored as a delta: ${dropped} entr${dropped === 1 ? "y" : "ies"} matched the claude defaults and were not stored (pass --full to keep them)`);
+      }
       if (data.backupPath) lines.push(`  backup: ${String(data.backupPath)}`);
       break;
+    }
     case "remove":
       lines.push(`Removed Claude provider "${String(data.provider ?? "")}".`);
       if (data.backupPath) lines.push(`  backup: ${String(data.backupPath)}`);
