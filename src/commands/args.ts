@@ -14,7 +14,7 @@ import { resolveCommandFromArgv } from "./registry";
  * `--reveal` is deliberately absent. It is stripped by the same exact-token rule a few lines
  * down, so listing it here would be a no-op rather than a fix. It stays global.
  */
-const BOOLEAN_FLAGS = new Set(["--claude", "--force", "--merge", "--overwrite", "--create-profile", "--full"]);
+const BOOLEAN_FLAGS = new Set(["--claude", "--force", "--merge", "--overwrite", "--create-profile", "--full", "--dry-run"]);
 
 /**
  * Parses argv into command positionals, global flags, and command-scoped options.

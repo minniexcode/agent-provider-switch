@@ -34,6 +34,14 @@ const FLAG_GUARDS: FlagGuard[] = [
     supportedCommands: () => ["add"],
     requiresClaude: true,
   },
+  {
+    // The motivating case for the whole table: `aps backups prune --dry-run` deletes real backups
+    // under a flag that promised a preview.
+    flag: "--dry-run",
+    accepts: (command) => command === "config-compact",
+    supportedCommands: () => ["config-compact"],
+    requiresClaude: true,
+  },
 ];
 
 /**

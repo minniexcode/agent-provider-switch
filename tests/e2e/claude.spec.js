@@ -208,6 +208,7 @@ module.exports = {
         assert.equal(unsupported.json.error.details.command, "status");
         assert.deepEqual(unsupported.json.error.details.supportedCommands, [
           "add",
+          "config-compact",
           "current",
           "list",
           "remove",

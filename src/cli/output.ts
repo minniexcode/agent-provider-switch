@@ -468,6 +468,36 @@ function renderClaudeHumanSuccess(command: string, data: Record<string, unknown>
       if (data.baseUrl) lines.push(`  base URL: ${String(data.baseUrl)}`);
       if (data.backupPath) lines.push(`  backup: ${String(data.backupPath)}`);
       break;
+    case "config-compact": {
+      const providers = (data.providers as Array<Record<string, unknown>>) ?? [];
+      const changed = providers.filter((provider) => provider.changed === true);
+      const dryRun = data.dryRun === true;
+
+      if (providers.length === 0) {
+        lines.push("No Claude providers configured; nothing to compact.");
+      } else if (changed.length === 0) {
+        lines.push(`All ${providers.length} Claude provider${providers.length === 1 ? "" : "s"} already store only what differs from the defaults; nothing to compact.`);
+      } else {
+        const noun = `of ${providers.length} Claude provider${providers.length === 1 ? "" : "s"}`;
+        lines.push(
+          dryRun
+            ? `Dry run: ${changed.length} ${noun} would be compacted. Nothing was written.`
+            : `Compacted ${changed.length} ${noun} to hold only what differs from the defaults.`
+        );
+        // Counts, not paths: the JSON envelope carries the paths, and a human reading this wants
+        // to see which providers move and by how much.
+        for (const provider of changed) {
+          const dropped = Array.isArray(provider.droppedPaths) ? provider.droppedPaths.length : 0;
+          lines.push(`  ${provider.provider}: ${dropped} entr${dropped === 1 ? "y" : "ies"} match the defaults`);
+        }
+        if (dryRun) {
+          lines.push("Run without --dry-run to apply. What a switch writes does not change.");
+        } else if (data.backupPath) {
+          lines.push(`  backup: ${String(data.backupPath)}`);
+        }
+      }
+      break;
+    }
     case "add": {
       lines.push(`Added Claude provider "${String(data.provider ?? "")}".`);
       if (data.model) lines.push(`  model: ${String(data.model)}`);

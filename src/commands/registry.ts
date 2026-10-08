@@ -257,6 +257,23 @@ export const COMMANDS: CommandDefinition[] = [
     examples: ["aps export ./providers-backup.json", "aps export ./providers-backup.json --force"],
   },
   {
+    id: "config-compact",
+    tokens: ["config", "compact"],
+    handler: handleRegisteredCommand,
+    group: "write",
+    summary: "Rewrite stored Claude providers to hold only what differs from the shared defaults.",
+    usage: ["aps config compact --claude [--dry-run] [--json]"],
+    booleanFlags: ["--claude", "--dry-run"],
+    details: [
+      "Requires --claude; Codex provider records are already flat, so there is nothing to compact.",
+      "Reads the claudeDefaults block from agent-provider-switch.json and replaces each record's settings with the entries that differ from it. The block is written by hand: nothing creates it, and the command refuses when it is absent.",
+      "Compaction never changes what a switch writes. A record is resolved over the defaults when read, so this rewrites how a provider is stored and nothing else.",
+      "Inheritance-first: a key the defaults set and a record omits is inherited, not stored. An empty object does not clear an inherited object; clearing takes an explicit null.",
+      "--dry-run reports which providers would change without taking the lock or writing anything. A real run backs up claude-providers.json first and does nothing when every record is already a delta.",
+    ],
+    examples: ["aps config compact --claude --dry-run", "aps config compact --claude", "aps config compact --claude --dry-run --json"],
+  },
+  {
     id: "backups-list",
     tokens: ["backups", "list"],
     handler: handleRegisteredCommand,

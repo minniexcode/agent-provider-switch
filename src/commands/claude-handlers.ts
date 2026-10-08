@@ -1,4 +1,5 @@
 import { claudeAddProvider } from "../app/claude-add-provider";
+import { claudeConfigCompact } from "../app/claude-config-compact";
 import { claudeGetCurrent } from "../app/claude-current";
 import { claudeListProviders } from "../app/claude-list-providers";
 import { claudeRemoveProvider } from "../app/claude-remove-provider";
@@ -19,7 +20,7 @@ import { readClaudeSettings } from "../storage/claude-providers-repo";
 /**
  * Commands that support the --claude flag.
  */
-const CLAUDE_COMMANDS = new Set(["add", "switch", "list", "show", "current", "remove"]);
+const CLAUDE_COMMANDS = new Set(["add", "switch", "list", "show", "current", "remove", "config-compact"]);
 
 /**
  * Returns true when the command has a Claude Code path at all.
@@ -231,6 +232,28 @@ export async function handleClaudeCommand(
         latestBackupPath,
         claudeProvidersPath: claudePaths.claudeProvidersPath,
         providerName,
+      });
+    }
+
+    case "config-compact": {
+      // Unlike every other consumer, this one cannot run without defaults: compacting against
+      // nothing would report success while changing nothing. Refuse, and say where the block goes.
+      if (defaults === null) {
+        throw cliError(
+          "INVALID_ARGUMENT",
+          `config compact needs a claudeDefaults block in ${toolHomePaths.toolConfigPath}. ` +
+            'Add one as { "claudeDefaults": { "settings": { ... } } } and run it again.',
+          { file: toolHomePaths.toolConfigPath }
+        );
+      }
+
+      return claudeConfigCompact({
+        lockPath,
+        backupsDir,
+        latestBackupPath,
+        claudeProvidersPath: claudePaths.claudeProvidersPath,
+        defaults,
+        dryRun: hasFlag(parsed.commandOptions, "--dry-run"),
       });
     }
 

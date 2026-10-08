@@ -64,6 +64,14 @@ export async function handleRegisteredCommand(
     return handleClaudeCommand(ctx, parsed, runtime);
   }
 
+  // `config compact` has no Codex form, so reaching here means `--claude` was left off. Refused
+  // before the Codex-directory check below, which would otherwise be what the user hears about.
+  if (ctx.command === "config-compact") {
+    throw cliError("INVALID_ARGUMENT", "config compact requires --claude: it rewrites Claude provider records.", {
+      command: ctx.command,
+    });
+  }
+
   // The lock lives in the tool home rather than in a Codex directory, so unlock has to run
   // before the codexDir guard below. Requiring a Codex directory to clear a lock would make
   // the command unusable in the situation it exists for.
