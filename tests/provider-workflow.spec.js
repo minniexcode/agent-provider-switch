@@ -109,7 +109,7 @@ module.exports = {
         writeProviders(toolHomeDir, {
           freemodel: { profile: "freemodel", apiKey: "sk-free", baseUrl: "https://free.example/v1", model: "gpt-5.4" },
         });
-        const lockPath = path.join(toolHomeDir, ".codex-switch.lock");
+        const lockPath = path.join(toolHomeDir, ".aps.lock");
         const writeLock = (pid) =>
           fs.writeFileSync(
             lockPath,

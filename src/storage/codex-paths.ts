@@ -11,9 +11,9 @@ export const TOOL_HOME_ENV_NAME = "APS_HOME";
  * `dispatch.ts` and `claude-handlers.ts` alongside the builders in this module. That duplication is
  * exactly how an identity rename leaves a stale literal behind in one spot but not the other.
  */
-export const TOOL_HOME_DIRNAME = "codex-switch";
-export const TOOL_CONFIG_FILENAME = "codex-switch.json";
-export const LOCK_FILENAME = ".codex-switch.lock";
+export const TOOL_HOME_DIRNAME = "agent-provider-switch";
+export const TOOL_CONFIG_FILENAME = "agent-provider-switch.json";
+export const LOCK_FILENAME = ".aps.lock";
 
 /**
  * The names used before the 1.0.0 rename. Frozen: they describe a location that already exists on

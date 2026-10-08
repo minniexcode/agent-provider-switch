@@ -21,7 +21,7 @@ const {
  * against a path nothing else uses.
  */
 function lockPathFor(toolHomeDir) {
-  return path.join(toolHomeDir, ".codex-switch.lock");
+  return path.join(toolHomeDir, ".aps.lock");
 }
 
 function writeLock(lockPath, record) {

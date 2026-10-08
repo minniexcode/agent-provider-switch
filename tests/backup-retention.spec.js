@@ -297,7 +297,7 @@ module.exports = {
         fs.writeFileSync(configPath, original, "utf8");
 
         const backupsDir = path.join(root, "backups");
-        const lockPath = path.join(root, ".codex-switch.lock");
+        const lockPath = path.join(root, ".aps.lock");
 
         let thrown = null;
         try {
@@ -342,7 +342,7 @@ module.exports = {
         let thrown = null;
         try {
           runMutation({
-            lockPath: path.join(root, ".codex-switch.lock"),
+            lockPath: path.join(root, ".aps.lock"),
             backupsDir,
             latestBackupPath: path.join(backupsDir, "latest.json"),
             operation: "switch",

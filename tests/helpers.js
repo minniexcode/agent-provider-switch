@@ -53,7 +53,7 @@ function makeToolHomeWithManagedState() {
   const toolHomeDir = makeTempDir("codex-switch-tool-home-");
   const packageJson = require("../package.json");
   fs.writeFileSync(path.join(toolHomeDir, "providers.json"), `${JSON.stringify({ providers: {} }, null, 2)}\n`, "utf8");
-  fs.writeFileSync(path.join(toolHomeDir, "codex-switch.json"), `${JSON.stringify({ version: packageJson.version }, null, 2)}\n`, "utf8");
+  fs.writeFileSync(path.join(toolHomeDir, "agent-provider-switch.json"), `${JSON.stringify({ version: packageJson.version }, null, 2)}\n`, "utf8");
   return toolHomeDir;
 }
 

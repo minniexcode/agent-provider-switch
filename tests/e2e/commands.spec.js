@@ -235,7 +235,7 @@ module.exports = {
         assert.doesNotMatch(human.stdout, /^tool home: $/m);
 
         assert.ok(fs.existsSync(path.join(sandbox.home, "providers.json")));
-        assert.ok(fs.existsSync(path.join(sandbox.home, "codex-switch.json")));
+        assert.ok(fs.existsSync(path.join(sandbox.home, "agent-provider-switch.json")));
 
         // Running it again is a success that reports the state already existed.
         const again = runOk(sandbox, ["init", "--json"]);

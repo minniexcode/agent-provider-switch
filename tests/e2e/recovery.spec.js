@@ -21,7 +21,7 @@ const {
 const DEAD_PID = 999999999;
 
 function lockPathFor(sandbox) {
-  return path.join(sandbox.home, ".codex-switch.lock");
+  return path.join(sandbox.home, ".aps.lock");
 }
 
 function writeLock(sandbox, record) {

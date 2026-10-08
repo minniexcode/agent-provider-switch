@@ -86,7 +86,7 @@ module.exports = {
           NODE_ENV: process.env.NODE_ENV,
         };
 
-        process.env.APS_HOME = path.resolve(os.homedir(), ".config", "codex-switch");
+        process.env.APS_HOME = path.resolve(os.homedir(), ".config", "agent-provider-switch");
         process.env.APS_CLAUDE_DIR = path.resolve(os.homedir(), ".claude");
         process.env.NODE_ENV = "development";
 

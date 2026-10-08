@@ -92,7 +92,7 @@ function createSandbox() {
   // `createSandbox({ bare: true })`.
   const version = require(path.join(repoRoot, "package.json")).version;
   writeJson(path.join(sandbox.home, "providers.json"), { providers: {} });
-  writeJson(path.join(sandbox.home, "codex-switch.json"), { version });
+  writeJson(path.join(sandbox.home, "agent-provider-switch.json"), { version });
 
   return sandbox;
 }
@@ -103,7 +103,7 @@ function createSandbox() {
 function createBareSandbox() {
   const sandbox = createSandbox();
   fs.rmSync(path.join(sandbox.home, "providers.json"), { force: true });
-  fs.rmSync(path.join(sandbox.home, "codex-switch.json"), { force: true });
+  fs.rmSync(path.join(sandbox.home, "agent-provider-switch.json"), { force: true });
   return sandbox;
 }
 
