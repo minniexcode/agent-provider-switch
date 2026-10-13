@@ -1,0 +1,5 @@
+# Version managers match `.node-version` literally, and `core.autocrlf=true` — the setting the
+# rest of this repo's files rely on — would otherwise check it out as "24\r", which fnm and many
+# others fail to resolve. The one line below is why this file exists at all; everything else in
+# the tree stays on git's default conversion.
+/.node-version text eol=lf
