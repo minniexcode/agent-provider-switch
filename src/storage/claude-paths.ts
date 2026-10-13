@@ -1,5 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
+import { TARGET_METADATA } from "../domain/target";
 
 export const CLAUDE_DIR_ENV_NAME = "APS_CLAUDE_DIR";
 
@@ -36,6 +37,7 @@ export function createClaudePaths(toolHomeDir: string, claudeDir?: string): Clau
   return {
     claudeDir: resolvedClaudeDir,
     claudeSettingsPath: path.join(resolvedClaudeDir, "settings.json"),
-    claudeProvidersPath: path.join(toolHomeDir, "claude-providers.json"),
+    // From the target declaration, for the same reason Codex reads its own from there.
+    claudeProvidersPath: path.join(toolHomeDir, TARGET_METADATA.claude.registryFile),
   };
 }

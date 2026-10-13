@@ -47,38 +47,48 @@ Temporary directories are created only through `makeTempDir()`, which registers 
 
 So `fs-utils.ts`, `args.ts`, `help.ts`, `providers-repo.ts`, `config-repo.ts`, `backup-repo.ts`, `lock-repo.ts`, `codex-paths.ts`, and `codex-cli.ts` each exist twice. Edit the one under `src/storage/`, `src/commands/`, or `src/runtime/` — never `src/infra/`.
 
-The one live file under `src/cli/` is `src/cli/output.ts`: the human and JSON renderer for every command.
+Two files under `src/cli/` are live: `src/cli/output.ts` (the human and JSON renderer for every command) and `src/cli/report-lines.ts` (the pure text helpers it shares with the per-target presenters — they live there rather than in either consumer because the renderer selects a presenter, so a presenter importing the renderer back would be an import cycle).
 
-`src/infra/` is slated for deletion in Phase 2 (roadmap P2-1). Do not add to it, and do not "fix" it to match its live twin.
+`src/infra/` and the four remaining `src/cli/` shims are slated for deletion in Phase 2 (roadmap P2-1). Do not add to them, and do not "fix" a shim to match its live twin.
 
 ## Architecture
 
 ```
 src/cli.ts              Entry point — argv parsing, --help/--version, lazily imports commands/dispatch
 src/commands/           Command registry, arg parsing (parseArgs), dispatch routing
-  registry.ts           COMMANDS array: id, tokens, usage, details, examples, handler
+  registry.ts           COMMANDS array: id, tokens, group, summary, usage, details, examples, booleanFlags
   dispatch.ts           Resolves the definition, migrates a legacy tool home, resolves codexDir, calls the handler
-  handlers.ts           Main switch for Codex commands
-  claude-handlers.ts    --claude flag dispatch (early-returns before the Codex path)
-src/cli/output.ts       Human + JSON rendering (the only live file in src/cli/)
+  handlers.ts           The registered handler: the main command switch, plus the Codex binding
+  claude-handlers.ts    Claude-selected dispatch (reached before the Codex directory guard)
+  target-bindings.ts    Binds one adapter to the shared workflows (bindTarget/bindCodexTarget/bindClaudeTarget)
+  target-presenters.ts  Per-target human renderers, selected by a pure static registry
+src/cli/output.ts       Human + JSON rendering
+src/cli/report-lines.ts Pure text helpers shared by the renderer and the presenters
 src/app/                Application services — one file per command action
   run-mutation.ts       Lock + backup + rollback wrapper for all write ops
+  provider-workflows.ts The six shared provider workflows and the single commitProviderChange boundary
+  collect-target-reports.ts  The generic status/doctor composer
+  targets/              Target adapters (codex-adapter, claude-adapter), the adapter types, report ports
 src/domain/             Pure types, validation, errors, parsers (no I/O)
+  command.ts            CommandId, ProviderVerb, PROVIDER_VERBS, isProviderVerb
+  target.ts             Target metadata, per-command policies, scope and routing rules
+  provider-registry.ts  The generic registry shape both targets store
   providers.ts          Codex ProviderRecord / ProvidersFile
   claude-providers.ts   Claude ClaudeProviderRecord / ClaudeProvidersFile
   config.ts             TOML parser with byte-offset patching (~1140 lines)
   secrets.ts            Secret-key pattern, maskSecret, maskSecretValues, redactSecretValues
   errors.ts             ErrorCode union + cliError() factory
 src/storage/            File I/O — read/write repos, path resolution
-  codex-paths.ts        ~/.config/agent-provider-switch paths + ~/.codex target
-                        (also owns the identity constants and the frozen LEGACY_* names)
+  tool-home-paths.ts    Tool-home paths, the identity constants, and the frozen LEGACY_* names
+  codex-paths.ts        The ~/.codex target paths and directory resolution
   claude-paths.ts       ~/.claude target paths
+  provider-registry-repo.ts  createRegistryRepo() — the one JSON registry reader/writer
   tool-home-migration.ts  Moves a pre-1.0.0 tool home to its current location
 src/interaction/        Interactive prompts (inquirer-based)
 src/runtime/            Codex CLI detection/probing
 ```
 
-`src/cli.ts` imports `commands/dispatch` **dynamically**, and help/version finish before dispatch executes. The current `commands/registry.ts` still imports handlers statically, so that entry-level dynamic import alone does not prevent transitive loading of command services and prompts. The [1.2.0 Design](docs/Design/agent-provider-switch-v1.2.0-design.md) separates lightweight declarations from handler loading to establish that boundary. `runCli(argv, io)` is the whole entry ladder — it takes line-oriented `{ stdout, stderr }` sinks and returns an exit code instead of calling `process.exit`. Tests call `runCli` directly through `runBuiltCli()`, so the dispatch ladder has exactly one implementation: there is no in-process mirror to keep in sync, and a change to `src/cli.ts` is immediately visible to the suite.
+`src/cli.ts` imports `commands/dispatch` **dynamically**, and help/version finish before dispatch executes. That boundary is load-bearing and now structural: `commands/registry.ts` holds declarations only, and the handler is loaded by `commands/dispatch.ts`, so `--help` does not pull in the app services, the inquirer runtime, the Codex probe, or any registry I/O. Do **not** put a `handler` back on `CommandDefinition` — a static import of `handlers.ts` from the registry is exactly what defeats the dynamic import. `tests/load-boundary.spec.js` checks this in a child process and would fail on that edit; it also asserts the counter-case, that a real command does load them. `runCli(argv, io)` is the whole entry ladder — it takes line-oriented `{ stdout, stderr }` sinks and returns an exit code instead of calling `process.exit`. Tests call `runCli` directly through `runBuiltCli()`, so the dispatch ladder has exactly one implementation: there is no in-process mirror to keep in sync, and a change to `src/cli.ts` is immediately visible to the suite.
 
 Output rendering is pure: `renderSuccess` / `renderFailure` in `src/cli/output.ts` return `{ stdout, stderr, exitCode }` and never write. Never add a `process.exit` to the library path — `src/cli.ts` sets `process.exitCode` after the promise settles, because exiting right after a write to a POSIX pipe can truncate stdout.
 
@@ -87,11 +97,15 @@ Output rendering is pure: `renderSuccess` / `renderFailure` in `src/cli/output.t
 The CLI manages two independent targets via the same tool-home (`~/.config/agent-provider-switch/`):
 
 - **Codex** (default): `providers.json` → projected into `~/.codex/config.toml` + `auth.json`
-- **Claude Code** (`--claude` flag): `claude-providers.json` → atomic replacement of `~/.claude/settings.json`
+- **Claude Code** (`--claude` / `--target claude`): `claude-providers.json` → atomic replacement of `~/.claude/settings.json`
 
-`src/domain/target.ts` declares each command's scope. `isClaudeCommand(command, commandOptions)` delegates to that scope: the six switchable provider verbs route to Claude when selected, and `config compact` always reaches the Claude handler, which requires an explicit Claude flag. `doctor`, `status`, and `backups list` compose reports across the selected targets rather than taking the Claude early-return. `handleRegisteredCommand()` performs that early-return before the Codex directory guard, so Claude provider commands work without a configured Codex directory.
+`src/domain/target.ts` declares each command's scope, and `src/domain/command.ts` the command and verb vocabulary. `acceptsTarget()` / `routesToClaudeHandler()` derive both from those declarations, and `parseArgs()` normalizes `--target <id>`, `--codex`, and `--claude` into one `targetSelection`; nothing downstream re-reads the flags. `doctor`, `status`, and `backups list` compose reports across the selected targets rather than taking the Claude early-return. `handleRegisteredCommand()` performs that early-return before the Codex directory guard, so Claude provider commands work without a configured Codex directory — that ordering is why the guard cannot simply move to the top of the function.
 
-This describes the current `1.1.3` implementation. The confirmed `1.2.0` plan shares provider workflows, registry I/O, interaction, and report composition through target descriptors and adapters; native settings, defaults, matching, and presentation policies remain target-specific. Read roadmap §4 and [ADR-0001](docs/adr/0001-share-provider-workflows-through-target-adapters.md) before designing the refactor. Keep the current stored formats for this cycle; different schemas do not make combined storage technically impossible.
+The six provider verbs (`add`/`list`/`show`/`current`/`switch`/`remove`) are implemented once, in `src/app/provider-workflows.ts`, and each target contributes a `ProviderAdapter` under `src/app/targets/`. An adapter declares records, native plans, matching and payload views; it must not import the shared workflow module, `run-mutation.ts`, `provider-registry-repo.ts`, the shared chooser, or `target-bindings.ts`. `tests/shared-workflows.spec.js` enforces that, that both adapters implement the same hook surface, and that `commitProviderChange` is entered only from the module that declares it. Native settings, defaults, matching, and presentation stay target-specific; read roadmap §4 and [ADR-0001](docs/adr/0001-share-provider-workflows-through-target-adapters.md) before extending them.
+
+Presentation follows the same split: `src/cli/output.ts` renders the shared view and the envelope, and delegates to a target's `TargetPresenter` when exactly one target is in scope. A presenter returns `null` for a command it does not own, which is how `status`, `doctor`, and `backups` reach the shared renderer; a missing presenter is an internal error, never a fallback to another target's text. Presenters are pure — they map the payload to lines and may not read a file, resolve a path, or probe a runtime.
+
+Stored formats are unchanged: `providers.json`, `claude-providers.json`, and `agent-provider-switch.json` keep their schemas, and the same-name isolation between the two targets is a property both registries rely on.
 
 ### Tool-Home Migration
 
@@ -101,9 +115,9 @@ It moves the pre-`1.0.0` tool home to the current one only when **all** of these
 
 Inside the legacy home, the tool config and the lock file are renamed to their current names *before* the directory is. That ordering is load-bearing. The directory rename is the only irreversible step, so everything retryable has to precede it; doing it first would leave the old config filename inside a home whose existence permanently satisfies the second guard, and the tool would then read the migrated data as a fresh install with no retry ever possible.
 
-The names it looks for come from the `LEGACY_*` constants in `src/storage/codex-paths.ts`. They are frozen and only ever read — never write to one, and never "update" them to match the current identity. Do not move this migration into `resolveToolHome()`: that is a pure resolver called several times per process, so the migration would run repeatedly, add probes to a hot path, and have no warning channel.
+The names it looks for come from the `LEGACY_*` constants in `src/storage/tool-home-paths.ts`. They are frozen and only ever read — never write to one, and never "update" them to match the current identity. Do not move this migration into `resolveToolHome()`: that is a pure resolver called several times per process, so the migration would run repeatedly, add probes to a hot path, and have no warning channel.
 
-The identity literals live in one place for the same reason. When renaming again, note that bare `codex` is **not** in scope — only the tool's own name tokens are, wherever they appear: the home directory name, the state filenames, the env-var prefix, and the bin name. A blanket `codex` replace corrupts the Codex integration itself: `--codex-dir`, `~/.codex`, `[model_providers.*]`, `src/runtime/codex-cli.ts`, `MIN_SUPPORTED_CODEX_VERSION`.
+The identity literals live in `src/storage/tool-home-paths.ts` for the same reason — they moved there with the tool-home paths, and `codex-paths.ts` now holds only the `~/.codex` target. When renaming again, note that bare `codex` is **not** in scope — only the tool's own name tokens are, wherever they appear: the home directory name, the state filenames, the env-var prefix, and the bin name. A blanket `codex` replace corrupts the Codex integration itself: `--codex-dir`, `~/.codex`, `[model_providers.*]`, `src/runtime/codex-cli.ts`, `MIN_SUPPORTED_CODEX_VERSION`.
 
 ### Secret Handling
 
@@ -116,7 +130,9 @@ Two different contracts, deliberately:
 
 ### Mutation Safety
 
-Managed provider and configuration writes go through `runMutation()`: acquire the shared lock, snapshot affected files, apply the change, and restore on failure. Recovery and pruning use their own shared-lock workflows; export writes an external file atomically without changing the managed registry. Both targets share one lock. In `1.2.0`, the common workflow owns the mutation wrapper; target adapters supply affected files and changes without nesting another `runMutation()`.
+Managed provider and configuration writes go through `runMutation()`: acquire the shared lock, snapshot affected files, apply the change, and restore on failure. Recovery and pruning use their own shared-lock workflows; export writes an external file atomically without changing the managed registry. Both targets share one lock.
+
+The six provider verbs reach it through `commitProviderChange()` in `src/app/provider-workflows.ts`, which is the only entry point: the common workflow owns the wrapper, and a target adapter supplies the affected files and the native changes without nesting another `runMutation()`. A second caller of `commitProviderChange` would be a second lock and a second backup for one logical change, so `tests/shared-workflows.spec.js` fails on one.
 
 Rollback is contained: `restoreManifest(manifest, allowedRoots)` requires an allowlist **built by the caller**, never read from the manifest — a root recorded inside the manifest would be tamperable by the same edit that redirects a restore path. Every restore path must resolve inside a root or it throws `ROLLBACK_PATH_REJECTED`. The parameter is required, not optional, so a new call site cannot silently skip the check. Both targets share one `backups/` dir and one `latest.json`, so the Codex rollback handler passes the Claude directory as a third root.
 
@@ -124,7 +140,7 @@ Rollback is contained: `restoreManifest(manifest, allowedRoots)` requires an all
 
 `parseArgs()` first extracts `--json`, `--reveal`, `--codex-dir`, and the declared boolean flags, including `--claude` and `--codex`, before resolving command tokens. Booleans do not consume the following provider name, so `aps add --claude myname` and prefix target flags are supported. The old `resolveClaudeProviderName()` workaround is gone. Help/version are detected by scanning the remaining tokens.
 
-Other valued command options are parsed after command resolution. The planned `--target <id>` must be extracted before resolution to support both prefix and suffix forms; all later guards and handlers must use its normalized target together with the aliases. Same-target duplicates are accepted, different-target selections are refused, and missing/unknown ids report `INVALID_ARGUMENT`. These rules are planned for `1.2.0`; the current binary still accepts the two aliases only.
+`--target <id>` is extracted in that same first pass, so its prefix and suffix forms both work; what all three spellings produce is one `targetSelection`, and every guard, handler, and report reads that instead of the flags. Same-target repeats are accepted, two different targets are refused, and a missing, flag-shaped, or unknown id reports `INVALID_ARGUMENT`. `--target` does not accept the `=` form. Other valued command options are parsed after command resolution.
 
 ## Version Bumps and Releases
 
@@ -156,8 +172,10 @@ Keep the product overview and technical architecture's current fact sources alig
 - `runBuiltCli()` swaps `APS_HOME` and calls `runCli` in-process; `runJsonCli()` additionally parses the JSON envelope from stdout on success or stderr on failure. Both accept `--codex-dir` in `args`
 - `runBuiltCli()` points `APS_CODEX_DIR` at a temporary directory whenever the call passes no `--codex-dir`, so a spec that forgets it cannot operate on the real `~/.codex`
 - Use `makeCodexFixture()` for any Codex target; there is no checked-in fixture directory
-- `withClaudeEnv()` is the only safe way to run a Claude command: it verifies `APS_CLAUDE_DIR` resolves inside a temp directory before running anything, because `switch --claude` replaces `settings.json` and would otherwise hit the real `~/.claude`. **Pass `--json` on every Claude spec invocation** — `canPrompt()` is true whenever the suite runs in a terminal, so a missing `--json` blocks on an inquirer prompt and hangs the suite instead of failing it
+- `withClaudeEnv()` is the only safe way to run a Claude command: it verifies `APS_CLAUDE_DIR` resolves inside a temp directory before running anything, because `switch --claude` replaces `settings.json` and would otherwise hit the real `~/.claude`. It pins `APS_HOME` for the same reason one directory over — a Claude write goes to `<APS_HOME>/claude-providers.json`, and an unset variable sends it to the developer's real `~/.config/agent-provider-switch`. **Pass `--json` on every Claude spec invocation** — `canPrompt()` is true whenever the suite runs in a terminal, so a missing `--json` blocks on an inquirer prompt and hangs the suite instead of failing it
 - POSIX-only assertions (file modes) must `return` early on `win32`
+- `tests/provider-prompts.spec.js` covers prompting by calling `executeCommand()` from `commands/dispatch` with a recorded fake `CliPromptRuntime`, which is the only way to reach a prompt without a TTY. It is the one suite exempt from the `--json` rule above, and only because nothing on its path builds the inquirer-backed runtime: it asserts for both targets that an unnamed `switch` asks once over that target's own registry, that a declined confirmation reaches neither the registry nor `runMutation()`, and that a non-interactive runtime and `--json` each suppress prompting entirely
+- Two specs assert structure rather than behaviour, because the property is about the call graph: `tests/shared-workflows.spec.js` reads `src/` to check that adapters import no orchestration and that `commitProviderChange` has one entry point, and `tests/load-boundary.spec.js` spawns a child process to check what `--help` loads. When either fails, the fix is the architecture, not the assertion — and the load-boundary spec's second test exists so a recorder that records nothing cannot pass
 
 ## Security
 

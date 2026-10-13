@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import { Finding, Reading, invalid, ok, unavailable } from "../domain/report";
-import { AgentProviderSwitchConfig } from "../storage/codex-paths";
+import { AgentProviderSwitchConfig } from "../storage/tool-home-paths";
 
 /**
  * What a report can establish about the shared tool config, field by field.

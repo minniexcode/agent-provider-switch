@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { BackupManifest } from "./backup";
-import type { TargetId } from "./target";
+import { TARGET_IDS, TARGET_METADATA_LIST, TargetId } from "./target";
 
 /**
  * How a backup entry is labelled once its target has been worked out.
@@ -31,50 +31,88 @@ export type BackupListItem = {
 const CODEX_OPERATIONS = new Set(["add", "switch", "remove", "edit", "import", "migrate"]);
 
 /**
- * Backup artifacts whose owner is fixed by their name, wherever they sit on disk.
+ * The data a backup classifier is given: who owns which artifact name, which runtime directories
+ * each target owns, and the order a target list is reported in.
  *
- * A name is needed as well as a root because the registries live in the *tool home*, which belongs
+ * Built by the caller from the target declarations and from the paths its path policy resolved.
+ * Data rather than a lookup performed here for two reasons: this is a domain module, so it may not
+ * resolve a path or read a declaration, and the roots a classification is judged against must come
+ * from the running configuration rather than from the manifest being judged.
+ *
+ * A *name* is needed as well as a root because the registries live in the tool home, which belongs
  * to neither target: `providers.json` is Codex's registry and `claude-providers.json` is Claude's,
  * and a classifier that only knew the two runtime roots would file both under "unknown" — or,
  * worse, file them under whichever root the tool home happened to be nested in, since `APS_HOME`
  * and `APS_CODEX_DIR` can overlap.
  *
- * The tool config is listed as `shared` rather than omitted. Omitting it would make a backup that
- * captured only the tool config classify as `unknown`, when what is actually known about it is that
- * it belongs to both targets — the same reason `restoreImpactOf()` reports a `shared` flag beside
- * its target list.
+ * `toolHomeDir` is carried although nothing here matches against it, and that is the point: the
+ * tool home holds both registries, so "inside the tool home" is not an ownership answer. The
+ * classifier recognises artifact names instead, which is what tells the two registries apart even
+ * when a single root contains both.
  */
-const KNOWN_ARTIFACT_OWNERS: Record<string, TargetId | "shared"> = {
-  "providers.json": "codex",
-  "claude-providers.json": "claude",
-  // `TOOL_CONFIG_FILENAME`. Repeated as a literal because this is a domain module and the storage
-  // layer is where paths are resolved; the name is part of the on-disk contract either way.
-  "agent-provider-switch.json": "shared",
+export type BackupOwnership = {
+  artifactOwners: Readonly<Record<string, TargetId | "shared">>;
+  targetRoots: readonly { target: TargetId; root: string }[];
+  targetOrder: readonly TargetId[];
+  toolHomeDir: string;
 };
+
+/**
+ * Builds the ownership table from the static target declarations and the resolved roots.
+ *
+ * The artifact names come from each declaration's `backupArtifacts` rather than from literals here,
+ * so a target that renames its registry cannot leave a classification behind that still answers for
+ * the old name. The shared artifacts are the caller's, because the tool config is a storage path
+ * and this module does not resolve one.
+ *
+ * Listing the tool config as `shared` rather than omitting it is deliberate: omitting it would make
+ * a backup that captured only the tool config classify as `unknown`, when what is known about it is
+ * that it belongs to both targets — the same reason `restoreImpactOf()` reports a `shared` flag
+ * beside its target list.
+ */
+export function createBackupOwnership(args: {
+  /** Runtime roots, resolved by the caller's path policy. */
+  roots: readonly { target: TargetId; root: string }[];
+  /** Artifacts that belong to both targets at once, such as the shared tool config. */
+  sharedArtifacts: readonly string[];
+  toolHomeDir: string;
+}): BackupOwnership {
+  const artifactOwners: Record<string, TargetId | "shared"> = {};
+  for (const metadata of TARGET_METADATA_LIST) {
+    for (const artifact of metadata.backupArtifacts) {
+      artifactOwners[artifact] = metadata.id;
+    }
+  }
+  for (const artifact of args.sharedArtifacts) {
+    artifactOwners[artifact] = "shared";
+  }
+
+  return {
+    artifactOwners,
+    targetRoots: args.roots,
+    targetOrder: TARGET_IDS,
+    toolHomeDir: args.toolHomeDir,
+  };
+}
 
 /**
  * One backup entry's ownership, as far as names can tell.
  */
-function artifactOwner(restorePath: string): TargetId | "shared" | null {
-  return KNOWN_ARTIFACT_OWNERS[path.basename(restorePath)] ?? null;
+function artifactOwner(restorePath: string, ownership: BackupOwnership): TargetId | "shared" | null {
+  return ownership.artifactOwners[path.basename(restorePath)] ?? null;
 }
 
 /**
- * The targets whose roots contain `candidate`.
+ * The targets whose roots contain `candidate`, in declaration order.
  *
  * A list rather than the first match: `APS_HOME` is commonly nested inside a directory also used
  * as `APS_CODEX_DIR`, and a first-match answer would report one target for a path that genuinely
  * belongs to both. Accumulating is the only answer that stays true as the roots move.
  */
-function matchingRoots(candidate: string, roots: BackupRoots): TargetId[] {
-  const matched: TargetId[] = [];
-  if (isWithinRoot(candidate, roots.codexDir)) {
-    matched.push("codex");
-  }
-  if (isWithinRoot(candidate, roots.claudeDir)) {
-    matched.push("claude");
-  }
-  return matched;
+function matchingRoots(candidate: string, ownership: BackupOwnership): TargetId[] {
+  return ownership.targetRoots
+    .filter((entry) => isWithinRoot(candidate, entry.root))
+    .map((entry) => entry.target);
 }
 
 /**
@@ -84,10 +122,10 @@ function matchingRoots(candidate: string, roots: BackupRoots): TargetId[] {
  * this", and a tool config is nobody's. A path matching no root contributes nothing here, because
  * an origin label has no `unknown` member to carry it — the absence of a label is the answer.
  */
-function originFromPaths(manifest: BackupManifest, roots: BackupRoots): TargetId[] {
+function originFromPaths(manifest: BackupManifest, ownership: BackupOwnership): TargetId[] {
   const targets = new Set<TargetId>();
   for (const entry of manifest.files) {
-    const owner = artifactOwner(entry.restorePath);
+    const owner = artifactOwner(entry.restorePath, ownership);
     if (owner === "shared") {
       continue;
     }
@@ -95,12 +133,12 @@ function originFromPaths(manifest: BackupManifest, roots: BackupRoots): TargetId
       targets.add(owner);
       continue;
     }
-    for (const target of matchingRoots(entry.restorePath, roots)) {
+    for (const target of matchingRoots(entry.restorePath, ownership)) {
       targets.add(target);
     }
   }
 
-  return (["codex", "claude"] as const).filter((target) => targets.has(target));
+  return ownership.targetOrder.filter((target) => targets.has(target));
 }
 
 /**
@@ -185,29 +223,16 @@ export function sortBackupList(items: BackupListItem[]): BackupListItem[] {
 /**
  * Converts a manifest into the stable list payload returned by `backups list`.
  */
-export function toBackupListItem(manifest: BackupManifest, roots: BackupRoots): BackupListItem {
+export function toBackupListItem(manifest: BackupManifest, ownership: BackupOwnership): BackupListItem {
   return {
     backupId: getBackupId(manifest.backupDir),
     createdAt: manifest.createdAt,
     reason: manifest.reason,
     files: manifest.files.map((file) => file.relativePath),
     backupPath: manifest.backupDir,
-    target: labelBackupTargets(classifyBackupTargets(manifest, roots)),
+    target: labelBackupTargets(classifyBackupTargets(manifest, ownership)),
   };
 }
-
-/**
- * The roots a backup's `restorePath` entries are tested against.
- *
- * Supplied by the caller rather than taken from the manifest, for the reason `restoreManifest()`
- * requires the same: the manifest is a file on disk, so a root recorded inside it would be
- * editable by whatever wrote the path the classification is trying to judge.
- */
-export type BackupRoots = {
-  codexDir: string;
-  claudeDir: string;
-  toolHomeDir: string;
-};
 
 /**
  * Works out which targets a backup touched, for manifests written before the target was recorded.
@@ -236,7 +261,7 @@ export type BackupRoots = {
  * a set rather than short-circuiting, which is why a manifest holding files under both trees is
  * reported as `mixed` instead of being assigned to whichever arm ran first.
  */
-export function classifyBackupTargets(manifest: BackupManifest, roots: BackupRoots): TargetId[] {
+export function classifyBackupTargets(manifest: BackupManifest, ownership: BackupOwnership): TargetId[] {
   if (manifest.target) {
     return [manifest.target];
   }
@@ -251,7 +276,7 @@ export function classifyBackupTargets(manifest: BackupManifest, roots: BackupRoo
     return ["codex"];
   }
 
-  return originFromPaths(manifest, roots);
+  return originFromPaths(manifest, ownership);
 }
 
 /**
@@ -300,13 +325,13 @@ export type RestoreImpact = {
  * A manifest holding only tool-home artifacts the table does not know returns `targets: []` with
  * `unknown: true` — which is a statement, not a gap.
  */
-export function restoreImpactOf(manifest: BackupManifest, roots: BackupRoots): RestoreImpact {
+export function restoreImpactOf(manifest: BackupManifest, ownership: BackupOwnership): RestoreImpact {
   const targets = new Set<TargetId>();
   let shared = false;
   let unknown = false;
 
   for (const entry of manifest.files) {
-    const owner = artifactOwner(entry.restorePath);
+    const owner = artifactOwner(entry.restorePath, ownership);
     if (owner === "shared") {
       shared = true;
       continue;
@@ -316,7 +341,7 @@ export function restoreImpactOf(manifest: BackupManifest, roots: BackupRoots): R
       continue;
     }
 
-    const matched = matchingRoots(entry.restorePath, roots);
+    const matched = matchingRoots(entry.restorePath, ownership);
     if (matched.length === 0) {
       unknown = true;
       continue;
@@ -327,7 +352,7 @@ export function restoreImpactOf(manifest: BackupManifest, roots: BackupRoots): R
   }
 
   return {
-    targets: (["codex", "claude"] as const).filter((target) => targets.has(target)),
+    targets: ownership.targetOrder.filter((target) => targets.has(target)),
     impact: { shared, unknown },
   };
 }
@@ -335,8 +360,8 @@ export function restoreImpactOf(manifest: BackupManifest, roots: BackupRoots): R
 /**
  * The target list alone, for callers that need only that axis.
  */
-export function targetsRestoredBy(manifest: BackupManifest, roots: BackupRoots): TargetId[] {
-  return restoreImpactOf(manifest, roots).targets;
+export function targetsRestoredBy(manifest: BackupManifest, ownership: BackupOwnership): TargetId[] {
+  return restoreImpactOf(manifest, ownership).targets;
 }
 
 /**

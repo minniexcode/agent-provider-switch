@@ -129,14 +129,20 @@ module.exports = {
         const declared = [...union.matchAll(/"([A-Z0-9_]+)"/g)].map((match) => match[1]);
         assert.ok(declared.length > 20, "the union parse must have found the members, not a fragment");
 
-        // The two ways a code reaches a caller. `readRequiredFile()` takes the code as its second
+        // The three ways a code reaches a caller. `readRequiredFile()` takes the code as its second
         // argument so it can throw a file-specific error, which is why a census that looked only at
-        // `cliError()` would call `CONFIG_NOT_FOUND` and `PROVIDERS_NOT_FOUND` unproduced.
+        // `cliError()` would call `CONFIG_NOT_FOUND` and `PROVIDERS_NOT_FOUND` unproduced. The third
+        // is a target adapter declaring a refusal as data (`DeclaredRefusal`), which the shared
+        // layer then raises — the code is produced by the crate, thrown by the binding.
+        //
+        // Matched on `cliErrorCode`, not on a bare `code:` key: `code` is also the field name of
+        // every informational issue a report carries, and those are not error codes at all.
         const produced = new Set();
         for (const file of sourceFiles(SOURCE_ROOT)) {
           const source = fs.readFileSync(file, "utf8");
           for (const match of source.matchAll(/cliError\(\s*"([A-Z0-9_]+)"/g)) produced.add(match[1]);
           for (const match of source.matchAll(/readRequiredFile\([^)]*?"([A-Z0-9_]+)"/g)) produced.add(match[1]);
+          for (const match of source.matchAll(/cliErrorCode:\s*"([A-Z0-9_]+)"/g)) produced.add(match[1]);
         }
 
         const unproduced = declared.filter((code) => !produced.has(code)).sort();

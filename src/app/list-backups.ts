@@ -1,4 +1,4 @@
-import { BackupRoots } from "../domain/backups";
+import { BackupOwnership } from "../domain/backups";
 import type { TargetId } from "../domain/target";
 import { listBackups } from "../storage/backup-repo";
 import { CommandResult } from "./types";
@@ -21,10 +21,10 @@ import { CommandResult } from "./types";
  */
 export function listBackupEntries(args: {
   backupsDir: string;
-  roots: BackupRoots;
+  ownership: BackupOwnership;
   targets: TargetId[];
 }): CommandResult {
-  const result = listBackups(args.backupsDir, args.roots);
+  const result = listBackups(args.backupsDir, args.ownership);
   const backups = result.backups.filter((backup) => {
     if (args.targets.length !== 1) {
       return true;

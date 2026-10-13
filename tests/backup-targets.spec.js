@@ -12,6 +12,7 @@ const {
 
 const {
   classifyBackupTargets,
+  createBackupOwnership,
   labelBackupTargets,
   restoreImpactOf,
   targetsRestoredBy,
@@ -28,6 +29,24 @@ const ROOTS = {
   claudeDir: path.join(os.tmpdir(), "aps-roots", "claude"),
   toolHomeDir: path.join(os.tmpdir(), "aps-roots", "home"),
 };
+
+/**
+ * The classifier's input: the roots above plus the artifact names that decide ownership without
+ * containment. Built through the same factory the CLI uses, rather than assembled by hand here, so
+ * a change to how ownership is declared reaches this spec.
+ */
+function ownershipOf(dirs) {
+  return createBackupOwnership({
+    roots: [
+      { target: "codex", root: dirs.codexDir },
+      { target: "claude", root: dirs.claudeDir },
+    ],
+    sharedArtifacts: ["agent-provider-switch.json"],
+    toolHomeDir: dirs.toolHomeDir,
+  });
+}
+
+const OWNERSHIP = ownershipOf(ROOTS);
 
 /**
  * A manifest with the fields the classification reads. `target` is omitted by default, which is
@@ -60,7 +79,7 @@ module.exports = {
         assert.deepEqual(
           classifyBackupTargets(
             manifest({ reason: "claude-switch", target: "codex", files: [path.join(ROOTS.claudeDir, "settings.json")] }),
-            ROOTS
+            OWNERSHIP
           ),
           ["codex"]
         );
@@ -72,11 +91,11 @@ module.exports = {
         // The fallback that makes the change backward compatible: every Claude mutation already
         // names its operation `claude-*`, and every Codex one uses an unprefixed name.
         for (const reason of ["claude-add", "claude-switch", "claude-remove", "claude-config-compact"]) {
-          assert.deepEqual(classifyBackupTargets(manifest({ reason }), ROOTS), ["claude"], reason);
+          assert.deepEqual(classifyBackupTargets(manifest({ reason }), OWNERSHIP), ["claude"], reason);
         }
 
         for (const reason of ["add", "switch", "remove", "edit", "import", "migrate"]) {
-          assert.deepEqual(classifyBackupTargets(manifest({ reason }), ROOTS), ["codex"], reason);
+          assert.deepEqual(classifyBackupTargets(manifest({ reason }), OWNERSHIP), ["codex"], reason);
         }
       },
     },
@@ -93,19 +112,19 @@ module.exports = {
             path.join(ROOTS.claudeDir, "settings.json"),
           ],
         });
-        assert.deepEqual(classifyBackupTargets(mixedHome, ROOTS), ["claude"]);
+        assert.deepEqual(classifyBackupTargets(mixedHome, OWNERSHIP), ["claude"]);
 
         // A registry in the tool home on its own is classified, and by its *name* rather than by
         // where it sits: `providers.json` is Codex's registry and `claude-providers.json` is
         // Claude's, and the tool home belongs to neither target. Containment alone would have to
         // pick a side for a directory that is on both, which is why the name is read here.
         const codexRegistry = manifest({ reason: "backfill", files: [path.join(ROOTS.toolHomeDir, "providers.json")] });
-        assert.deepEqual(classifyBackupTargets(codexRegistry, ROOTS), ["codex"]);
+        assert.deepEqual(classifyBackupTargets(codexRegistry, OWNERSHIP), ["codex"]);
         const claudeRegistry = manifest({
           reason: "backfill",
           files: [path.join(ROOTS.toolHomeDir, "claude-providers.json")],
         });
-        assert.deepEqual(classifyBackupTargets(claudeRegistry, ROOTS), ["claude"]);
+        assert.deepEqual(classifyBackupTargets(claudeRegistry, OWNERSHIP), ["claude"]);
 
         // The two registries in one manifest is `mixed`, which is reachable from names alone — no
         // operation writes both today, but the answer follows the files rather than the operation.
@@ -116,18 +135,18 @@ module.exports = {
             path.join(ROOTS.toolHomeDir, "claude-providers.json"),
           ],
         });
-        assert.deepEqual(classifyBackupTargets(bothRegistries, ROOTS), ["codex", "claude"]);
+        assert.deepEqual(classifyBackupTargets(bothRegistries, OWNERSHIP), ["codex", "claude"]);
 
         // An unrecognised name in the tool home classifies nothing, and `unknown` is the honest
         // answer: containment there would have to guess whose directory it is.
         const unknownHome = manifest({ reason: "backfill", files: [path.join(ROOTS.toolHomeDir, "notes.txt")] });
-        assert.deepEqual(classifyBackupTargets(unknownHome, ROOTS), []);
-        assert.equal(labelBackupTargets(classifyBackupTargets(unknownHome, ROOTS)), "unknown");
+        assert.deepEqual(classifyBackupTargets(unknownHome, OWNERSHIP), []);
+        assert.equal(labelBackupTargets(classifyBackupTargets(unknownHome, OWNERSHIP)), "unknown");
 
         // Outside the tool home, containment is what answers: a runtime file the name table does
         // not know is attributed to the root it sits in.
         assert.deepEqual(
-          classifyBackupTargets(manifest({ reason: "backfill", files: [path.join(ROOTS.codexDir, "config.toml")] }), ROOTS),
+          classifyBackupTargets(manifest({ reason: "backfill", files: [path.join(ROOTS.codexDir, "config.toml")] }), OWNERSHIP),
           ["codex"]
         );
       },
@@ -145,8 +164,8 @@ module.exports = {
             path.join(ROOTS.codexDir, "auth.json"),
           ],
         });
-        assert.deepEqual(classifyBackupTargets(both, ROOTS), ["codex", "claude"]);
-        assert.equal(labelBackupTargets(classifyBackupTargets(both, ROOTS)), "mixed");
+        assert.deepEqual(classifyBackupTargets(both, OWNERSHIP), ["codex", "claude"]);
+        assert.equal(labelBackupTargets(classifyBackupTargets(both, OWNERSHIP)), "mixed");
 
         // A prefix match would call this inside `.../claude`. It is a different directory, and it is
         // exactly the check that keeps a backup for one root from being attributed to another.
@@ -154,12 +173,12 @@ module.exports = {
           reason: "backfill",
           files: [path.join(path.dirname(ROOTS.claudeDir), "claude-old", "settings.json")],
         });
-        assert.deepEqual(classifyBackupTargets(sibling, ROOTS), []);
+        assert.deepEqual(classifyBackupTargets(sibling, OWNERSHIP), []);
 
         // A root is not inside itself: a directory is never a backup entry, so an entry that names
         // one is not a containment claim about the tree under it.
         const rootItself = manifest({ reason: "backfill", files: [ROOTS.claudeDir] });
-        assert.deepEqual(classifyBackupTargets(rootItself, ROOTS), []);
+        assert.deepEqual(classifyBackupTargets(rootItself, OWNERSHIP), []);
       },
     },
     {
@@ -185,21 +204,21 @@ module.exports = {
           target: "codex",
           files: [path.join(ROOTS.claudeDir, "settings.json")],
         });
-        assert.deepEqual(classifyBackupTargets(conflicted, ROOTS), ["codex"], "the recorded target labels the entry");
-        assert.deepEqual(targetsRestoredBy(conflicted, ROOTS), ["claude"], "the paths decide what a restore touches");
+        assert.deepEqual(classifyBackupTargets(conflicted, OWNERSHIP), ["codex"], "the recorded target labels the entry");
+        assert.deepEqual(targetsRestoredBy(conflicted, OWNERSHIP), ["claude"], "the paths decide what a restore touches");
 
         // Metadata is not consulted at all, in either direction: an operation name that says Codex
         // over a Claude path is the same conflict as an explicit `target` saying it.
         const byReason = manifest({ reason: "switch", files: [path.join(ROOTS.claudeDir, "settings.json")] });
-        assert.deepEqual(classifyBackupTargets(byReason, ROOTS), ["codex"]);
-        assert.deepEqual(targetsRestoredBy(byReason, ROOTS), ["claude"]);
+        assert.deepEqual(classifyBackupTargets(byReason, OWNERSHIP), ["codex"]);
+        assert.deepEqual(targetsRestoredBy(byReason, OWNERSHIP), ["claude"]);
 
         // Both trees accumulate, so a restore that writes both reports both.
         const bothTrees = manifest({
           reason: "backfill",
           files: [path.join(ROOTS.claudeDir, "settings.json"), path.join(ROOTS.codexDir, "config.toml")],
         });
-        assert.deepEqual(targetsRestoredBy(bothTrees, ROOTS), ["codex", "claude"]);
+        assert.deepEqual(targetsRestoredBy(bothTrees, OWNERSHIP), ["codex", "claude"]);
 
         // Registry-only, which is what an `add` snapshot looks like: nothing under either runtime
         // root, and the registry itself in the tool home. The restore still overwrites Claude's
@@ -210,8 +229,8 @@ module.exports = {
           reason: "claude-add",
           files: [path.join(ROOTS.toolHomeDir, "claude-providers.json")],
         });
-        assert.deepEqual(targetsRestoredBy(registryOnly, ROOTS), ["claude"]);
-        assert.deepEqual(classifyBackupTargets(registryOnly, ROOTS), ["claude"]);
+        assert.deepEqual(targetsRestoredBy(registryOnly, OWNERSHIP), ["claude"]);
+        assert.deepEqual(classifyBackupTargets(registryOnly, OWNERSHIP), ["claude"]);
       },
     },
     {
@@ -223,7 +242,7 @@ module.exports = {
         assert.deepEqual(
           restoreImpactOf(
             manifest({ reason: "init", files: [path.join(ROOTS.toolHomeDir, "agent-provider-switch.json")] }),
-            ROOTS
+            OWNERSHIP
           ),
           { targets: [], impact: { shared: true, unknown: false } }
         );
@@ -232,7 +251,7 @@ module.exports = {
         // somewhere, and where is not known. Reported rather than dropped, because a caller that
         // saw only `targets: []` would conclude the opposite.
         assert.deepEqual(
-          restoreImpactOf(manifest({ reason: "backfill", files: [path.join(os.tmpdir(), "elsewhere", "config.toml")] }), ROOTS),
+          restoreImpactOf(manifest({ reason: "backfill", files: [path.join(os.tmpdir(), "elsewhere", "config.toml")] }), OWNERSHIP),
           { targets: [], impact: { shared: false, unknown: true } }
         );
 
@@ -247,7 +266,7 @@ module.exports = {
                 path.join(os.tmpdir(), "elsewhere", "settings.json"),
               ],
             }),
-            ROOTS
+            OWNERSHIP
           ),
           { targets: ["codex"], impact: { shared: true, unknown: true } }
         );
@@ -256,13 +275,14 @@ module.exports = {
         // `claudeDir` is a layout `APS_HOME` and `APS_CODEX_DIR` can genuinely produce, and the
         // path is inside both — so a restore from it touches both, and a first-match answer would
         // understate what it overwrote.
-        const nested = {
+        const nestedDirs = {
           codexDir: path.join(ROOTS.claudeDir, "codex"),
           claudeDir: ROOTS.claudeDir,
           toolHomeDir: ROOTS.toolHomeDir,
         };
+        const nested = ownershipOf(nestedDirs);
         assert.deepEqual(
-          restoreImpactOf(manifest({ reason: "backfill", files: [path.join(nested.codexDir, "config.toml")] }), nested),
+          restoreImpactOf(manifest({ reason: "backfill", files: [path.join(nestedDirs.codexDir, "config.toml")] }), nested),
           { targets: ["codex", "claude"], impact: { shared: false, unknown: false } }
         );
 
@@ -270,7 +290,7 @@ module.exports = {
         // `providers.json` is Codex's and is not also credited to the root it happens to sit in.
         assert.deepEqual(
           restoreImpactOf(
-            manifest({ reason: "backfill", files: [path.join(nested.codexDir, "providers.json")] }),
+            manifest({ reason: "backfill", files: [path.join(nestedDirs.codexDir, "providers.json")] }),
             nested
           ),
           { targets: ["codex"], impact: { shared: false, unknown: false } }

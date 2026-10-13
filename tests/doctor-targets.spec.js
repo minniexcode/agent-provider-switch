@@ -9,7 +9,7 @@ const {
   withClaudeEnv,
   runJsonCli,
 } = require("./helpers");
-const { resolveLockPath } = require("../dist/storage/codex-paths.js");
+const { resolveLockPath } = require("../dist/storage/tool-home-paths.js");
 const { setCodexSpawnImplementation, resetCodexSpawnImplementation } = require("../dist/runtime/codex-cli.js");
 
 /**

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import { ClaudeDefaults } from "../domain/claude-providers";
 import { cliError } from "../domain/errors";
-import { AgentProviderSwitchConfig } from "./codex-paths";
+import { AgentProviderSwitchConfig } from "./tool-home-paths";
 import { ensureDir, writeTextFileAtomic } from "./fs-utils";
 
 /**

@@ -1,4 +1,3 @@
-import { handleRegisteredCommand } from "./handlers";
 import { CommandDefinition, CommandId } from "./types";
 
 /**
@@ -8,7 +7,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "config-show",
     tokens: ["config", "show"],
-    handler: handleRegisteredCommand,
     group: "read",
     summary: "Show the current route summary and legacy profile view.",
     usage: ["aps config show [profile] [--codex] [--json] [--codex-dir <path>]"],
@@ -22,7 +20,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "config-list-profiles",
     tokens: ["config", "list-profiles"],
-    handler: handleRegisteredCommand,
     group: "read",
     summary: "List recognizable legacy config profiles with managed-state hints.",
     usage: ["aps config list-profiles [--codex] [--json] [--codex-dir <path>]"],
@@ -36,7 +33,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "init",
     tokens: ["init"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Initialize the agent-provider-switch tool home for the primary workflow.",
     usage: ["aps init [--codex] [--json] [--codex-dir <path>]"],
@@ -53,7 +49,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "migrate",
     tokens: ["migrate"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Adopt existing Codex runtime profiles into managed providers.json state.",
     usage: ["aps migrate [--codex] [--json] [--codex-dir <path>] [--merge|--overwrite]"],
@@ -70,7 +65,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "setup",
     tokens: ["setup"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Deprecated. Kept only to point callers to init or migrate.",
     usage: ["aps setup"],
@@ -84,7 +78,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "list",
     tokens: ["list"],
-    handler: handleRegisteredCommand,
     group: "read",
     summary: "List managed providers with model-provider routing and current-state hints.",
     usage: ["aps list [--claude] [--codex] [--json] [--codex-dir <path>]"],
@@ -100,7 +93,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "show",
     tokens: ["show"],
-    handler: handleRegisteredCommand,
     group: "read",
     summary: "Show one provider record from providers.json.",
     usage: ["aps show <provider> [--claude] [--codex] [--json] [--reveal] [--codex-dir <path>]"],
@@ -117,7 +109,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "current",
     tokens: ["current"],
-    handler: handleRegisteredCommand,
     group: "read",
     summary: "Show the active top-level model/model_provider route from config.toml.",
     usage: ["aps current [--claude] [--codex] [--json] [--codex-dir <path>]"],
@@ -128,7 +119,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "status",
     tokens: ["status"],
-    handler: handleRegisteredCommand,
     group: "read",
     summary: "Show each target's runtime directory, managed route, and health status.",
     usage: ["aps status [--codex] [--claude] [--json] [--codex-dir <path>]"],
@@ -146,7 +136,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "edit",
     tokens: ["edit"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Update fields on a single provider record.",
     usage: [
@@ -168,7 +157,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "add",
     tokens: ["add"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Add a managed provider.",
     usage: [
@@ -199,7 +187,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "switch",
     tokens: ["switch"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Switch the active runtime to a managed provider.",
     usage: ["aps switch <provider> [--claude] [--codex] [--json] [--codex-dir <path>]"],
@@ -217,7 +204,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "remove",
     tokens: ["remove"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Remove a provider from providers.json.",
     usage: ["aps remove <provider> [--claude] [--codex] [--force] [--switch-to <provider>] [--json] [--codex-dir <path>]"],
@@ -235,7 +221,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "import",
     tokens: ["import"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Replace providers.json with an external JSON file.",
     usage: ["aps import <file> [--merge] [--codex] [--json] [--codex-dir <path>]"],
@@ -250,7 +235,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "export",
     tokens: ["export"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Export the current providers.json to another file.",
     usage: ["aps export <file> [--force] [--codex] [--json] [--codex-dir <path>]"],
@@ -265,7 +249,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "config-compact",
     tokens: ["config", "compact"],
-    handler: handleRegisteredCommand,
     group: "write",
     summary: "Rewrite stored Claude providers to hold only what differs from the shared defaults.",
     usage: ["aps config compact --claude [--dry-run] [--json]"],
@@ -282,7 +265,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "backups-list",
     tokens: ["backups", "list"],
-    handler: handleRegisteredCommand,
     group: "recovery",
     summary: "List historical backup entries, labelled with the target each belongs to.",
     usage: ["aps backups list [--codex] [--claude] [--json] [--codex-dir <path>]"],
@@ -298,7 +280,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "backups-prune",
     tokens: ["backups", "prune"],
-    handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Delete old backup directories beyond the retention count.",
     usage: ["aps backups prune [--keep <count>] [--json] [--codex-dir <path>]"],
@@ -314,7 +295,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "doctor",
     tokens: ["doctor"],
-    handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Run issue-first diagnostics across both targets' runtime state.",
     usage: ["aps doctor [--codex] [--claude] [--json] [--codex-dir <path>]"],
@@ -332,7 +312,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "unlock",
     tokens: ["unlock"],
-    handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Clear a lock left behind by a process that no longer exists.",
     usage: ["aps unlock [--force] [--json]"],
@@ -349,7 +328,6 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: "rollback",
     tokens: ["rollback"],
-    handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Restore the latest managed backup or a specific backup id.",
     usage: ["aps rollback [<backup-id>] [--json] [--codex-dir <path>]"],

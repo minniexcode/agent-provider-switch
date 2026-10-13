@@ -1,62 +1,63 @@
 import * as fs from "node:fs";
-import { cliError, normalizeError } from "../domain/errors";
 import {
   ClaudeProvidersFile,
   ClaudeProviderRecord,
   sortClaudeProviders,
   validateClaudeProvidersShape,
 } from "../domain/claude-providers";
+import { RegistryRepo, createRegistryRepo } from "./provider-registry-repo";
 import { writeTextFileAtomic } from "./fs-utils";
+
+/**
+ * The Claude registry as a generic repo over its own codec.
+ *
+ * The codec is the Claude pair, never a merged view: `settings` is stored as the delta it is, and
+ * the repo hands back exactly what the file holds. `readClaudeProvidersFile` is what `remove`
+ * writes back, so a resolved reader here would materialize the defaults into every surviving
+ * record. Resolving is done by `resolveClaudeProvidersFile()`, by read-only callers, afterwards.
+ */
+function repoFor(providersPath: string): RegistryRepo<ClaudeProviderRecord> {
+  return createRegistryRepo<ClaudeProviderRecord>(
+    providersPath,
+    { decode: validateClaudeProvidersShape, encode: sortClaudeProviders },
+    {
+      label: "claude-providers.json",
+      // Unlike Codex, a missing Claude registry has a remedy the user has not been told yet.
+      missingMessage: "claude-providers.json not found. Run `aps add --claude` first.",
+      notFoundSubject: "Claude provider",
+      // A near-miss name is the common case on a filesystem path, so the alternative is named.
+      notFoundDetails: (file) => ({ availableProviders: Object.keys(file.providers).sort() }),
+    }
+  );
+}
 
 /**
  * Reads and validates claude-providers.json from disk.
  */
 export function readClaudeProvidersFile(providersPath: string): ClaudeProvidersFile {
-  if (!fs.existsSync(providersPath)) {
-    throw cliError("PROVIDERS_NOT_FOUND", "claude-providers.json not found. Run `aps add --claude` first.", {
-      file: providersPath,
-    });
-  }
-  const raw = fs.readFileSync(providersPath, "utf8");
-  try {
-    return validateClaudeProvidersShape(JSON.parse(raw));
-  } catch (error: unknown) {
-    throw cliError("PROVIDERS_PARSE_ERROR", "Failed to parse claude-providers.json.", {
-      file: providersPath,
-      cause: normalizeError(error).message,
-    });
-  }
+  return repoFor(providersPath).read("required");
 }
 
 /**
  * Reads claude-providers.json when it exists, otherwise returns an empty registry.
  */
 export function readClaudeProvidersFileIfExists(providersPath: string): ClaudeProvidersFile {
-  return fs.existsSync(providersPath) ? readClaudeProvidersFile(providersPath) : { providers: {} };
+  return repoFor(providersPath).read("empty-if-missing");
 }
 
 /**
  * Persists claude-providers.json using deterministic key ordering.
  */
 export function writeClaudeProvidersFile(providersPath: string, providers: ClaudeProvidersFile): void {
-  writeTextFileAtomic(providersPath, `${JSON.stringify(sortClaudeProviders(providers), null, 2)}\n`);
+  repoFor(providersPath).write(providers);
 }
 
 /**
  * Returns a single Claude provider record or throws a typed not-found error.
  */
 export function readClaudeProviderRecord(providersPath: string, providerName: string): ClaudeProviderRecord {
-  const providers = readClaudeProvidersFile(providersPath);
-  const record = providers.providers[providerName];
-  if (!record) {
-    throw cliError("PROVIDER_NOT_FOUND", `Claude provider "${providerName}" was not found.`, {
-      provider: providerName,
-      file: providersPath,
-      availableProviders: Object.keys(providers.providers).sort(),
-    });
-  }
-
-  return record;
+  const repo = repoFor(providersPath);
+  return repo.find(repo.read("required"), providerName);
 }
 
 /**

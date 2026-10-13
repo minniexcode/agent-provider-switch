@@ -1,31 +1,23 @@
 import * as fs from "node:fs";
-import { addProvider } from "../app/add-provider";
+import { collectReport } from "../app/collect-target-reports";
 import { editProvider } from "../app/edit-provider";
 import { exportProviders } from "../app/export-providers";
-import { buildClaudeReport, claudeSection } from "../app/get-claude-status";
-import { getCurrentProfile } from "../app/get-current-profile";
-import { buildCodexReport } from "../app/get-status";
 import { inspectToolConfig } from "../app/inspect-tool-config";
-import { containsUnavailable, inspectSharedLock } from "../app/report-support";
 import { initCodex } from "../app/init-codex";
 import { importProviders } from "../app/import-providers";
 import { listConfigProfilesView } from "../app/list-config-profiles";
 import { listBackupEntries } from "../app/list-backups";
-import { listProviders } from "../app/list-providers";
 import { pruneBackupEntries, resolveBackupRetention } from "../app/prune-backups";
-import { removeProvider } from "../app/remove-provider";
 import { rollbackBackup } from "../app/rollback-backup";
-import { runDoctor } from "../app/run-doctor";
 import { migrateCodex } from "../app/setup-codex";
 import { showConfig } from "../app/show-config";
-import { showProvider } from "../app/show-provider";
-import { switchProvider } from "../app/switch-provider";
 import { unlockLock } from "../app/unlock-lock";
 import { buildManagedProfileViews } from "../domain/config";
+import { createBackupOwnership } from "../domain/backups";
 import { cliError } from "../domain/errors";
+import { routesToClaudeHandler } from "../domain/target";
 import { collectMigrateAdoptability, SetupProviderDetails } from "../domain/setup";
 import { validateProvidersShape } from "../domain/providers";
-import { collectAddInput, createNonInteractiveAddError } from "../interaction/add-interactive";
 import {
   canPrompt,
   chooseCodexDir,
@@ -35,18 +27,19 @@ import {
   collectSetupProviderDetails,
   confirmExportOverwrite,
   confirmImport,
-  confirmProviderRemoval,
   confirmRollback,
   exportTargetExists,
-  promptForProviderSelection,
 } from "../interaction/interactive";
 import { createPromptRuntime } from "../interaction/prompt";
+import { createReportPorts } from "../app/targets/report-ports";
 import { findCodexDirCandidates, readStructuredConfig } from "../storage/config-repo";
 import { createClaudePaths } from "../storage/claude-paths";
-import { createCodexPaths, resolveLockPath } from "../storage/codex-paths";
+import { createCodexPaths } from "../storage/codex-paths";
+import { resolveLockPath, TOOL_CONFIG_FILENAME } from "../storage/tool-home-paths";
 import { mergeProviders, readProvidersFileIfExists } from "../storage/providers-repo";
-import { getSingleOption, hasFlag } from "./args";
-import { handleClaudeCommand, isClaudeCommand } from "./claude-handlers";
+import { createOptionBag, getSingleOption, hasFlag } from "./args";
+import { bindCodexTarget } from "./target-bindings";
+import { handleClaudeCommand } from "./claude-handlers";
 import { CommandExecutionContext, ParsedCommand } from "./types";
 
 /**
@@ -58,16 +51,25 @@ export async function handleRegisteredCommand(
   runtime = createPromptRuntime()
 ): Promise<import("../app/types").CommandResult> {
   // The flag guards have already run — `executeCommand` calls them, because the guard's refusal
-  // has to be raised while the context still carries a definite target, and because it must land
-  // before the Claude early-return below (which would otherwise let `switch --claude --full`
-  // through and reach a handler that ignores `--full`).
-  if (isClaudeCommand(ctx.command, parsed.commandOptions)) {
+  // has to be raised while the context still carries a definite scope, and because it must land
+  // before the early-return below (which would otherwise let `switch --claude --full` through and
+  // reach a handler that ignores `--full`).
+  //
+  // Routing reads the normalized selection rather than the flags, so `--claude` and
+  // `--target claude` cannot take different paths. `routesToClaudeHandler()` is what keeps `both`
+  // out: `doctor`, `status`, and `backups list` accept a Claude selection and must still reach
+  // their own handler, because no Claude service could produce the whole answer.
+  if (
+    parsed.targetSelection.kind === "explicit" &&
+    parsed.targetSelection.id === "claude" &&
+    routesToClaudeHandler(ctx.command)
+  ) {
     return handleClaudeCommand(ctx, parsed, runtime);
   }
 
-  // `config compact` used to be refused here, for the `--claude` it was missing. It cannot reach
-  // this line any more: `claude-only` routes to the Claude handler unconditionally, which is where
-  // that refusal now lives.
+  // `config compact` used to be refused here, for the `--claude` it was missing. The scope
+  // resolver refuses it earlier now, before any file is read — which is also where the requirement
+  // belongs, since the same declaration produces the help text for it.
 
   // The lock lives in the tool home rather than in a Codex directory, so unlock has to run
   // before the codexDir guard below. Requiring a Codex directory to clear a lock would make
@@ -86,85 +88,85 @@ export async function handleRegisteredCommand(
   let setupPaths = createCodexPaths(ctx.options.codexDir);
   const paths = setupPaths;
 
-  // Both targets' paths, and the shared roots a backup is classified against. Resolved once here
+  // Both targets' paths, and the ownership table a backup is classified against. Resolved once here
   // rather than per case: `doctor`, `status`, `backups list`, and `rollback` all need the Claude
   // root, and the root is what a classification must not read from the manifest it is judging.
+  //
+  // The table is built from the same declarations the rest of the tool reads, so a target's registry
+  // name is stated once. The tool home is not one of the roots on purpose — it holds both registries,
+  // so containment in it says nothing about ownership; the artifact names are what decide.
   const claudePaths = createClaudePaths(paths.toolHomeDir);
-  const backupRoots = {
-    codexDir: paths.codexDir,
-    claudeDir: claudePaths.claudeDir,
+  const backupOwnership = createBackupOwnership({
+    roots: [
+      { target: "codex", root: paths.codexDir },
+      { target: "claude", root: claudePaths.claudeDir },
+    ],
+    sharedArtifacts: [TOOL_CONFIG_FILENAME],
     toolHomeDir: paths.toolHomeDir,
+  });
+
+  /** The lock and backups tree Codex mutations run under, shared with every other target. */
+  const shared = {
+    lockPath: paths.lockPath,
+    backupsDir: paths.backupsDir,
+    latestBackupPath: paths.latestBackupPath,
   };
-  const claudeDefaults = ctx.toolConfig?.claudeDefaults?.settings ?? null;
+  const codexTarget = () =>
+    bindCodexTarget({
+      providersPath: paths.providersPath,
+      configPath: paths.configPath,
+      codexDir: paths.codexDir,
+      authPath: paths.authPath,
+      shared,
+    });
+  /** The request shape every shared verb takes, built from this invocation. */
+  const providerRequest = (verb: import("../domain/command").ProviderVerb) => ({
+    verb,
+    positionals: parsed.positionals,
+    view: { json: ctx.options.json, reveal: ctx.options.reveal },
+    runtime,
+    options: createOptionBag(parsed.commandOptions),
+    shared,
+  });
 
   switch (ctx.command) {
+    // The six provider verbs go through the shared workflows. Which target runs is already settled —
+    // a Claude selection was routed to the Claude handler above — so this asks by id and lets the
+    // verb pick the workflow. The scope resolver is what makes that a definite answer rather than
+    // an assumption about reaching this line.
     case "list":
-      return listProviders(paths.providersPath, paths.configPath);
-    case "show": {
-      let providerName = parsed.positionals[0] ?? null;
-      if (!providerName && canPrompt(runtime, ctx.options.json)) {
-        providerName = await promptForProviderSelection(runtime, paths.providersPath, paths.configPath, "Choose a provider to show");
-      }
-
-      if (!providerName) {
-        throw cliError("INVALID_ARGUMENT", "Missing provider name for show command.");
-      }
-      return showProvider({
-        providersPath: paths.providersPath,
-        providerName,
-        includeSecret: ctx.options.json,
-      });
-    }
+    case "show":
     case "current":
-      return getCurrentProfile(paths.configPath, paths.providersPath);
-    case "status": {
-      const warnings: string[] = [];
-      const data: Record<string, unknown> = { toolHomeRoot: paths.toolHomeDir };
-      const inspection = ctx.toolConfigInspection ?? inspectToolConfig(paths.toolConfigPath);
-      const issues: Array<Record<string, unknown>> = [];
-      const notes: Array<Record<string, unknown>> = [];
-
-      data.complete = true;
-
-      if (ctx.targets.includes("codex")) {
-        const codex = await buildCodexReport({
-          toolHomeRoot: paths.toolHomeDir,
-          providersPath: paths.providersPath,
-          codexDir: ctx.codexDirUnavailableReason ? null : paths.codexDir,
-          codexDirUnavailableReason: ctx.codexDirUnavailableReason ?? null,
-          defaultsPresent: inspection.reading.status === "ok" && inspection.reading.value.defaultsPresent,
-        });
-        data.codex = codex.section;
-        issues.push(...codex.issues);
-        warnings.push(...codex.warnings);
-      }
-      if (ctx.targets.includes("claude")) {
-        const claude = buildClaudeReport({
-          claudeDir: claudePaths.claudeDir,
-          claudeProvidersPath: claudePaths.claudeProvidersPath,
-          claudeSettingsPath: claudePaths.claudeSettingsPath,
-          defaults: inspection.defaults,
-        });
-        // The Claude section carries its own detail beside the shared readings: which of the three
-        // settings states the live file is in, and the per-provider rows the human view prints.
-        data.claude = claudeSection(claude);
-        issues.push(...claude.issues);
-        notes.push(...claude.notes);
-      }
-
-      issues.push(...(ctx.targets.includes("claude") ? inspection.claudeIssues : []), ...inspection.sharedIssues);
-      const lock = inspectSharedLock(paths.lockPath);
-      data.shared = { toolConfig: inspection.reading, lock: lock.reading };
-      if (lock.finding) {
-        issues.push(lock.finding);
-      }
-
-      data.issues = issues;
-      data.notes = notes;
-      data.healthy = issues.length > 0 ? false : containsUnavailable(data) ? null : true;
-      data.complete = !containsUnavailable(data);
-
-      return { data, warnings };
+    case "add":
+    case "switch":
+    case "remove": {
+      return codexTarget().executeProvider(providerRequest(ctx.command));
+    }
+    // `status` and `doctor` publish the same report — same sections, same shared block, same health
+    // fields — so they are one composition with one difference: the mode, which decides which checks
+    // the target collectors run. Split into two cases again, they would be two chances for the two
+    // payloads to drift.
+    case "status":
+    case "doctor": {
+      return collectReport({
+        mode: ctx.command === "doctor" ? "doctor" : "status",
+        targets: ctx.targets,
+        toolHomeRoot: paths.toolHomeDir,
+        toolConfig: ctx.toolConfigInspection ?? inspectToolConfig(paths.toolConfigPath),
+        lockPath: paths.lockPath,
+        ports: createReportPorts({
+          codex: {
+            providersPath: paths.providersPath,
+            codexDir: ctx.codexDirUnavailableReason ? null : paths.codexDir,
+            codexDirUnavailableReason: ctx.codexDirUnavailableReason ?? null,
+          },
+          claude: {
+            claudeDir: claudePaths.claudeDir,
+            claudeProvidersPath: claudePaths.claudeProvidersPath,
+            claudeSettingsPath: claudePaths.claudeSettingsPath,
+          },
+        }),
+      });
     }
     case "init": {
       return initCodex({
@@ -186,27 +188,6 @@ export async function handleRegisteredCommand(
         configPath: paths.configPath,
         providersPath: paths.providersPath,
       });
-    case "switch": {
-      let providerName = parsed.positionals[0] ?? null;
-      if (!providerName && canPrompt(runtime, ctx.options.json)) {
-        providerName = await promptForProviderSelection(runtime, paths.providersPath, paths.configPath, "Choose a provider to switch to");
-      }
-
-      if (!providerName) {
-        throw cliError("PROVIDER_NOT_FOUND", "Missing provider name for switch command.");
-      }
-
-      return switchProvider({
-        codexDir: paths.codexDir,
-        lockPath: paths.lockPath,
-        backupsDir: paths.backupsDir,
-        latestBackupPath: paths.latestBackupPath,
-        configPath: paths.configPath,
-        providersPath: paths.providersPath,
-        authPath: paths.authPath,
-        providerName,
-      });
-    }
     case "import": {
       const sourceFile = parsed.positionals[0];
       if (!sourceFile) {
@@ -258,68 +239,19 @@ export async function handleRegisteredCommand(
         force,
       });
     }
-    case "add": {
-      let providerName = parsed.positionals[0] ?? null;
-      let profile = getSingleOption(parsed.commandOptions, "--profile");
-      let apiKey = getSingleOption(parsed.commandOptions, "--api-key");
-      let baseUrl = getSingleOption(parsed.commandOptions, "--base-url");
-      let model = getSingleOption(parsed.commandOptions, "--model");
-      let note = getSingleOption(parsed.commandOptions, "--note");
-      let tags = parsed.commandOptions.get("--tag") ?? [];
-      let createProfile = hasFlag(parsed.commandOptions, "--create-profile");
-
-      if (!providerName || !profile || !apiKey) {
-        if (ctx.options.json || !runtime.isInteractive()) {
-          throw createNonInteractiveAddError();
-        }
-
-        const prompted = await collectAddInput(
-          runtime,
-          {
-            providerName,
-            profile,
-            apiKey,
-            model,
-            baseUrl,
-            note,
-            tags,
-          },
-          (candidate) => Boolean(readProvidersFileIfExists(paths.providersPath).providers[candidate]),
-          (candidate) => Boolean(readStructuredConfig(paths.configPath).profiles.find((profileView) => profileView.name === candidate))
-        );
-
-        providerName = prompted.providerName;
-        profile = prompted.profile;
-        apiKey = prompted.apiKey;
-        model = prompted.model ?? null;
-        baseUrl = prompted.baseUrl ?? null;
-        note = prompted.note ?? null;
-        tags = prompted.tags;
-        createProfile = createProfile || prompted.createProfile;
-      }
-
-      return addProvider({
-        codexDir: paths.codexDir,
-        lockPath: paths.lockPath,
-        backupsDir: paths.backupsDir,
-        latestBackupPath: paths.latestBackupPath,
-        providersPath: paths.providersPath,
-        configPath: paths.configPath,
-        authPath: paths.authPath,
-        providerName,
-        profile,
-        apiKey: apiKey ?? "",
-        baseUrl,
-        model,
-        note,
-        tags,
-        createProfile,
-      });
-    }
     case "edit": {
-      let providerName = parsed.positionals[0] ?? null;
-      if (!providerName && canPrompt(runtime, ctx.options.json)) {
-        providerName = await promptForProviderSelection(runtime, paths.providersPath, paths.configPath, "Choose a provider to edit");
+      // `edit` is not one of the six shared verbs, so it is dispatched here rather than by target
+      // id — but the chooser it offers is the binding's, so a user sees the same names, markers and
+      // order whether they are editing a provider or switching to one.
+      // Annotated `string | null`: with the index signature unchecked, `positionals[0] ?? null` is
+      // typed `string`, which would make the assignment below unreachable to the checker.
+      let providerName: string | null = parsed.positionals[0] ?? null;
+      if (!providerName) {
+        providerName = await codexTarget().chooseName("edit", {
+          positionals: parsed.positionals,
+          view: { json: ctx.options.json, reveal: ctx.options.reveal },
+          runtime,
+        });
       }
 
       if (!providerName) {
@@ -383,58 +315,6 @@ export async function handleRegisteredCommand(
         tags,
         createProfile,
         switchToProfile,
-      });
-    }
-    case "remove": {
-      let providerName = parsed.positionals[0] ?? null;
-      const force = hasFlag(parsed.commandOptions, "--force");
-      const switchToProfile = getSingleOption(parsed.commandOptions, "--switch-to") ?? undefined;
-
-      if (!providerName && canPrompt(runtime, ctx.options.json)) {
-        providerName = await promptForProviderSelection(runtime, paths.providersPath, paths.configPath, "Choose a provider to remove");
-      }
-
-      if (!providerName) {
-        throw cliError("PROVIDER_NOT_FOUND", "Missing provider name for remove command.");
-      }
-
-      if (!force && !canPrompt(runtime, ctx.options.json)) {
-        throw cliError("INVALID_ARGUMENT", "remove requires --force.");
-      }
-
-      if (canPrompt(runtime, ctx.options.json)) {
-        await confirmProviderRemoval(runtime, providerName);
-      }
-
-      return removeProvider({
-        codexDir: paths.codexDir,
-        lockPath: paths.lockPath,
-        backupsDir: paths.backupsDir,
-        latestBackupPath: paths.latestBackupPath,
-        providersPath: paths.providersPath,
-        configPath: paths.configPath,
-        providerName,
-        switchToProvider: switchToProfile,
-      });
-    }
-    case "doctor": {
-      const inspection = ctx.toolConfigInspection ?? inspectToolConfig(paths.toolConfigPath);
-      return runDoctor({
-        targets: ctx.targets,
-        toolHomeRoot: paths.toolHomeDir,
-        codex: {
-          codexDir: ctx.codexDirUnavailableReason ? null : paths.codexDir,
-          codexDirUnavailableReason: ctx.codexDirUnavailableReason ?? null,
-          providersPath: paths.providersPath,
-          defaultsPresent: inspection.reading.status === "ok" && inspection.reading.value.defaultsPresent,
-        },
-        claude: {
-          claudeDir: claudePaths.claudeDir,
-          claudeProvidersPath: claudePaths.claudeProvidersPath,
-          claudeSettingsPath: claudePaths.claudeSettingsPath,
-        },
-        toolConfig: inspection,
-        lockPath: paths.lockPath,
       });
     }
     case "migrate": {
@@ -562,7 +442,7 @@ export async function handleRegisteredCommand(
     case "backups-list":
       return listBackupEntries({
         backupsDir: paths.backupsDir,
-        roots: backupRoots,
+        ownership: backupOwnership,
         targets: ctx.targets,
       });
     case "backups-prune":
@@ -587,7 +467,7 @@ export async function handleRegisteredCommand(
         // the manifest, because the manifest is the untrusted input.
         allowedRoots: [paths.toolHomeDir, paths.codexDir, claudePaths.claudeDir],
         // The same roots again, read only to report which target the restored backup belonged to.
-        roots: backupRoots,
+        ownership: backupOwnership,
         backupId: parsed.positionals[0] ?? null,
       });
     default:

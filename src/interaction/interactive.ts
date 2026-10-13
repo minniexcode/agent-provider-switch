@@ -3,10 +3,7 @@ import * as path from "node:path";
 import { BackupManifest } from "../domain/backup";
 import { cliError } from "../domain/errors";
 import { getBackupId } from "../domain/backups";
-import { inspectLiveStateDrift } from "../domain/runtime-state";
 import { resolveCodexDir } from "../storage/codex-paths";
-import { readStructuredConfig } from "../storage/config-repo";
-import { readProvidersFile } from "../storage/providers-repo";
 import { loadLatestManifest, loadManifestById } from "../storage/backup-repo";
 import { promptTags } from "./add-interactive";
 import { CliPromptRuntime } from "./prompt";
@@ -16,50 +13,6 @@ import { CliPromptRuntime } from "./prompt";
  */
 export function canPrompt(runtime: CliPromptRuntime, jsonMode: boolean): boolean {
   return !jsonMode && runtime.isInteractive();
-}
-
-/**
- * Prompts the user to choose one configured provider when a command omitted its target.
- */
-export async function promptForProviderSelection(
-  runtime: CliPromptRuntime,
-  providersPath: string,
-  configPath: string,
-  message: string
-): Promise<string> {
-  const providers = readProvidersFile(providersPath);
-  const document = fs.existsSync(configPath) ? readStructuredConfig(configPath) : null;
-  const currentModelProvider = document?.currentModelProvider ?? null;
-  const liveState = inspectLiveStateDrift(currentModelProvider, providers);
-  const legacyCurrentProvider =
-    !liveState.providerResolvable &&
-    document?.legacyProfile &&
-    providers.providers[document.legacyProfile]
-      ? document.legacyProfile
-      : null;
-  const choices = Object.entries(providers.providers)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([providerName, provider]) => {
-      const currentMarker = liveState.providerResolvable && liveState.mappedProvider === providerName ? " | current" : "";
-      const legacyMarker = !currentMarker && legacyCurrentProvider === providerName ? " | current" : "";
-      const ambiguousMarker =
-        !liveState.providerResolvable && liveState.mappedProviders.includes(providerName) ? " | current=ambiguous" : "";
-      return {
-        value: providerName,
-        label: providerName,
-        hint: `profile=${provider.profile}${currentMarker}${legacyMarker}${ambiguousMarker}`,
-      };
-    });
-
-  // The plural code, because the condition is the plural one: there is no provider to choose from,
-  // not a named provider that could not be found. The Claude selector raises the same code for the
-  // same condition (`1.1.2`), and a caller cannot tell the two targets apart by their error code —
-  // which is the point of the shared vocabulary.
-  if (choices.length === 0) {
-    throw cliError("PROVIDERS_NOT_FOUND", "No providers are configured.");
-  }
-
-  return runtime.selectOne(message, choices);
 }
 
 /**

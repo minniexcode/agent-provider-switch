@@ -386,11 +386,12 @@ module.exports = {
           assert.equal(onSwitch.payload.error.code, "INVALID_ARGUMENT");
           assert.deepEqual(onSwitch.payload.error.details.supportedCommands, ["add"]);
 
-          // The right command without the target it applies to.
+          // The right command without the target it applies to. Refused for naming no target at
+          // all rather than for naming the wrong one: `--target claude` satisfies it equally.
           const onCodexAdd = await runClaude(toolHomeDir, ["add", "somename", "--full", "--json"]);
           assert.equal(onCodexAdd.status, 1);
           assert.equal(onCodexAdd.payload.error.code, "INVALID_ARGUMENT");
-          assert.match(onCodexAdd.payload.error.message, /only applies together with --claude/);
+          assert.match(onCodexAdd.payload.error.message, /only applies to Claude/);
 
           // A command that never heard of it.
           const onList = await runClaude(toolHomeDir, ["backups", "list", "--full", "--json"]);

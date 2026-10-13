@@ -1,3 +1,4 @@
+import { policyOf, TARGET_METADATA, targetsDeclaring } from "../domain/target";
 import {
   COMMANDS,
   findCommandDefinitionByTokens,
@@ -5,6 +6,7 @@ import {
   getPublicCommandNames,
   isKnownHelpTopic,
 } from "./registry";
+import type { CommandId } from "./types";
 
 const GROUP_TITLES = {
   read: "Read Commands",
@@ -47,6 +49,8 @@ export function buildHelpText(commandName?: string | null): string {
       "",
        "Global options:",
        "  --json             Output the standard JSON envelope and disable all prompts.",
+       "  --target <id>      Act on one target: codex or claude. Equivalent to the shorthand",
+       "                     flags below, and refused when two different targets are named.",
        "  --claude           Act on Claude Code state instead of Codex state.",
        "  --codex            Act on Codex state. This is the default, named so that a command",
        "                     line reads the same whichever target it picks.",
@@ -113,6 +117,8 @@ export function buildHelpText(commandName?: string | null): string {
     "",
     command.summary,
     "",
+    renderTargetHint(command.id),
+    "",
     "Usage:",
     ...command.usage.map((usage) => `  ${usage}`),
     "",
@@ -122,6 +128,50 @@ export function buildHelpText(commandName?: string | null): string {
     "Examples:",
     ...command.examples.map((example) => `  ${example}`),
   ].join("\n");
+}
+
+/**
+ * The target sentence for one command, generated from its policy.
+ *
+ * Generated rather than hand-written per command, because the alternative is a help text that
+ * advertises `--target` on twenty-one commands and silently forgets it on the twenty-second. The
+ * prose that cannot be derived — what a command does, and which native features it depends on —
+ * stays hand-written in the registry.
+ */
+function renderTargetHint(command: CommandId): string {
+  const policy = policyOf(command);
+
+  if (policy.mode === "shared") {
+    return "Targets: state both targets share; neither --claude nor --codex applies.";
+  }
+
+  const declared = targetsDeclaring(policy.operation).map((id) => TARGET_METADATA[id].label);
+
+  if (policy.mode === "many") {
+    return `Targets: ${joinWithAnd(declared)} by default; --codex, --claude, or --target <id> narrows the report.`;
+  }
+
+  if (policy.defaultTarget === null) {
+    // One spelling is not enough here: the target is required, so the line has to say how to name
+    // it rather than just which one it is.
+    const metadata = TARGET_METADATA[targetsDeclaring(policy.operation)[0] ?? "claude"];
+    return `Targets: ${metadata.label} only, and it must be named (${metadata.aliases[0]} or --target ${metadata.id}).`;
+  }
+
+  if (declared.length === 1) {
+    return `Targets: ${declared[0]} only.`;
+  }
+
+  return `Targets: ${TARGET_METADATA[policy.defaultTarget].label} by default; --claude or --target claude selects Claude.`;
+}
+
+/**
+ * Joins names into a readable list: "a and b", "a, b and c".
+ */
+function joinWithAnd(values: string[]): string {
+  if (values.length === 0) return "";
+  if (values.length === 1) return values[0];
+  return `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
 }
 
 function renderGroupedCommands(): string[] {

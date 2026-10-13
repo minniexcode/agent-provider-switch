@@ -128,7 +128,7 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
     // Stated rather than omitted because the field is required, and stated as the empty list rather
     // than guessed at because this context has not resolved a target yet: `executeCommand` assigns
     // the real list before the handler runs. `[]` is the honest answer for this context — it names
-    // no target, and it is the same value a refusal that never reached `selectedTargets()` renders
+    // no target, and it is the same value a refusal that never reached the scope resolver renders
     // with, so a consumer reads one meaning for "nothing resolved" rather than two.
     targets: [],
   };

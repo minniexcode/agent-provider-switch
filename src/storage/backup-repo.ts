@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { BackupManifest, FileBackupEntry } from "../domain/backup";
-import { BackupRoots, sortBackupList, toBackupListItem, validateBackupManifest } from "../domain/backups";
+import { BackupOwnership, sortBackupList, toBackupListItem, validateBackupManifest } from "../domain/backups";
 import type { TargetId } from "../domain/target";
 import { cliError, normalizeError } from "../domain/errors";
 import { SECURE_DIR_MODE, ensureDir, writeTextFileAtomic } from "./fs-utils";
@@ -165,12 +165,12 @@ export function loadManifestById(backupsDir: string, backupId: string): BackupMa
 /**
  * Lists valid backup manifests under backups/, newest first, while skipping corrupt entries with warnings.
  *
- * `roots` is what lets every entry be labelled with the target it belongs to; the directory itself
- * is shared, so nothing about an entry's position on disk says which target wrote it.
+ * `ownership` is what lets every entry be labelled with the target it belongs to; the directory
+ * itself is shared, so nothing about an entry's position on disk says which target wrote it.
  */
 export function listBackups(
   backupsDir: string,
-  roots: BackupRoots
+  ownership: BackupOwnership
 ): {
   backups: Array<ReturnType<typeof toBackupListItem>>;
   warnings: string[];
@@ -198,7 +198,7 @@ export function listBackups(
 
     try {
       backups.push(
-        toBackupListItem(validateBackupManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8"))), roots)
+        toBackupListItem(validateBackupManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8"))), ownership)
       );
     } catch (error: unknown) {
       warnings.push(`Skipped backup "${entry.name}" because manifest.json is invalid: ${normalizeError(error).message}`);

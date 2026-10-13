@@ -104,8 +104,11 @@ module.exports = {
         // are the places where the old name is data rather than branding: the rename map that
         // records what changed, the frozen LEGACY_* values the migration matches against whatever
         // is already on a user's disk, and this file's own negative assertion.
+        //
+        // Those LEGACY_* values live in the shared tool-home module, so that is where the allowlist
+        // points; the entry follows the constants rather than the other way round.
         const allowed = new Set([
-          "src/storage/codex-paths.ts",
+          "src/storage/tool-home-paths.ts",
           "tests/tool-home-migration.spec.js",
           "tests/release-contract.spec.js",
           "docs/PRD/agent-provider-switch-prd-v1.0.0.md",

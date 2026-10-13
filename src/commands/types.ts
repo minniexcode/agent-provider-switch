@@ -1,5 +1,5 @@
-import type { TargetId } from "../domain/target";
-import type { AgentProviderSwitchConfig } from "../storage/codex-paths";
+import type { TargetId, TargetSelection } from "../domain/target";
+import type { AgentProviderSwitchConfig } from "../storage/tool-home-paths";
 import type { ToolConfigInspection } from "../app/inspect-tool-config";
 
 /**
@@ -14,29 +14,12 @@ export type GlobalOptions = {
 
 /**
  * Stable internal command identifiers used by help, parsing, dispatch, and JSON output.
+ *
+ * Declared in `domain/command.ts` — the target declarations need it and a domain module may not
+ * import from this one — and re-exported here so every existing `./types` import keeps working.
  */
-export type CommandId =
-  | "config-show"
-  | "config-list-profiles"
-  | "config-compact"
-  | "init"
-  | "migrate"
-  | "list"
-  | "show"
-  | "current"
-  | "status"
-  | "setup"
-  | "edit"
-  | "add"
-  | "switch"
-  | "remove"
-  | "import"
-  | "export"
-  | "backups-list"
-  | "backups-prune"
-  | "doctor"
-  | "unlock"
-  | "rollback";
+import type { CommandId } from "../domain/command";
+export type { CommandId };
 
 /**
  * Parsed CLI input split into a stable command id, positional arguments, and options.
@@ -46,6 +29,18 @@ export type ParsedCommand = {
   positionals: string[];
   globalOptions: GlobalOptions;
   commandOptions: Map<string, string[]>;
+  /**
+   * The target this invocation named, normalized once by the parser.
+   *
+   * The single source of truth for selection: the guard, dispatch, the compact requirement and the
+   * report filtering all read this, and none of them re-reads `--claude` off the option map. The
+   * shorthand flags are still recorded in `commandOptions` so a diagnostic can quote what was
+   * typed, but nothing decides behaviour from their presence.
+   *
+   * A conflict between two targets never produces a value here: `parseArgs()` throws instead, which
+   * is what keeps "different targets" from becoming a precedence rule somewhere downstream.
+   */
+  targetSelection: TargetSelection;
   helpRequested: boolean;
   helpTarget: string | null;
   versionRequested: boolean;
@@ -118,9 +113,17 @@ export type CommandDefinition = {
    * a flag declared boolean but unknown to the parser cannot silently swallow the next token.
    */
   booleanFlags?: string[];
-  handler: CommandHandler;
 };
 
+/**
+ * Runs one resolved command. Declared by the dispatcher, which is the module that loads it.
+ *
+ * It used to be a `handler` field on {@link CommandDefinition}, which meant the registry — and
+ * therefore `--help`, which reads the registry — statically imported every execution service, the
+ * inquirer prompt runtime and the Codex probe. The declaration is metadata; the handler is the
+ * execution layer, and `cli.ts` reaches that layer through a dynamic import. Keeping the two
+ * together is what that dynamic import exists to prevent (P2 entry boundary, design §4.3).
+ */
 export type CommandHandler = (
   ctx: CommandExecutionContext,
   parsed: ParsedCommand,

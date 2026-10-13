@@ -1,143 +1,157 @@
 import { cliError } from "../domain/errors";
-import { acceptsTargetFlag, scopeOf, TargetFlag } from "../domain/target";
-import { getKnownCommandIds } from "./registry";
+import {
+  acceptsTarget,
+  resolveCommandTargets,
+  scopeOf,
+  TARGET_METADATA,
+  TargetId,
+  TargetScopeRefusal,
+  TargetSelection,
+} from "../domain/target";
+import { findCommandDefinition, getKnownCommandIds } from "./registry";
 import { CommandId } from "./types";
 
 /**
- * A global boolean flag and the commands that actually do something with it.
- */
-type FlagGuard = {
-  flag: string;
-  accepts: (command: CommandId) => boolean;
-  supportedCommands: () => string[];
-  /** Whether the flag only means something alongside `--claude`. */
-  requiresClaude: boolean;
-};
-
-/**
- * The commands that accept one target flag, sorted for a stable refusal message.
+ * The commands that can be asked about one target, sorted for a stable refusal message.
  *
- * Derived from `TARGET_SCOPES` rather than kept beside it. `1.1.1` built this list from a
- * hand-maintained `CLAUDE_COMMANDS` set that had to be kept in step with the guard by hand; the
- * table is now the only place the answer lives, so the message and the check cannot disagree.
+ * Derived from the target declarations rather than kept beside them: the capability table is the
+ * only place the answer lives, so the message and the check cannot disagree.
  */
-function supportedTargetCommands(flag: TargetFlag): string[] {
+function commandsAccepting(target: TargetId): string[] {
   return getKnownCommandIds()
-    .filter((command) => acceptsTargetFlag(command, flag))
+    .filter((command) => acceptsTarget(command, target))
     .sort();
 }
 
 /**
- * Every global boolean flag a command may not simply ignore.
- *
- * The parser strips these tokens by exact equality before it knows which command it is parsing, so
- * it accepts them anywhere. Accepted-and-ignored is the dangerous reading: `aps backups prune
- * --dry-run` would delete real backups under a flag that promised not to, and `aps status
- * --claude` would report Codex state under a flag that asked about Claude. Each entry here turns
- * that into a refusal that names what the flag does apply to.
- *
- * The table judges one flag at a time. Whether two flags contradict *each other* is a property of
- * the pair and belongs to `resolveTarget()` — see `dispatch.ts`.
+ * The public spelling of a command, for a sentence a user has to recognize.
  */
-const FLAG_GUARDS: FlagGuard[] = [
-  {
-    flag: "--claude",
-    accepts: (command) => acceptsTargetFlag(command, "--claude"),
-    supportedCommands: () => supportedTargetCommands("--claude"),
-    requiresClaude: false,
-  },
-  {
-    // Naming the default must not fail, so this entry has almost no refusal surface: every
-    // command that acts on Codex state accepts it. It nevertheless refuses two real cases —
-    // `config compact`, which has no Codex form, and the shared-state commands, where the flag
-    // names a narrowing that does not exist.
-    flag: "--codex",
-    accepts: (command) => acceptsTargetFlag(command, "--codex"),
-    supportedCommands: () => supportedTargetCommands("--codex"),
-    requiresClaude: false,
-  },
-  {
-    flag: "--full",
-    accepts: (command) => command === "add",
-    supportedCommands: () => ["add"],
-    requiresClaude: true,
-  },
-  {
-    // The motivating case for the whole table: `aps backups prune --dry-run` deletes real backups
-    // under a flag that promised a preview.
-    flag: "--dry-run",
-    accepts: (command) => command === "config-compact",
-    supportedCommands: () => ["config-compact"],
-    requiresClaude: true,
-  },
-];
-
-/**
- * Builds the sentence a refusal carries.
- *
- * The generic form is a last resort rather than the rule. Two refusals have a reason worth
- * stating: a `shared` command refuses both target flags because the flag asks a question with no
- * answer, and `config compact` refuses `--codex` because it has no Codex form at all. Neither is
- * a missing capability, and reporting one as a missing capability would be the wrong fix.
- */
-function refusalMessageFor(guard: FlagGuard, command: CommandId): string {
-  if (guard.flag === "--codex" && command === "config-compact") {
-    return "config compact has no Codex form: it rewrites Claude provider records, so it requires --claude.";
-  }
-  if (scopeOf(command) === "shared") {
-    return `"${command}" operates on state every target shares, so it cannot be narrowed with ${guard.flag}.`;
-  }
-  return `"${command}" does not support ${guard.flag}.`;
+function commandLabel(command: CommandId): string {
+  return findCommandDefinition(command)?.tokens.join(" ") ?? command;
 }
 
 /**
- * Throws `INVALID_ARGUMENT` when a flag was passed to a command that would ignore it.
+ * The two spellings that select one target: the shorthand flag and the `--target` form.
+ */
+function selectorLabel(target: TargetId): string {
+  return `${TARGET_METADATA[target].aliases[0]} (or --target ${target})`;
+}
+
+/**
+ * A flag that is only meaningful together with one target's selection.
  *
- * Called by `executeCommand` before the Claude early-return in `handleRegisteredCommand`, not
- * after it. A Claude-capable command such as `switch --claude --full` reaches the Claude path, so
- * a check placed after that branch would never see the stray flag.
+ * The declaration is per flag and per command: `--full` means "keep the file's entries verbatim"
+ * for Claude `add` and nothing at all anywhere else, and `--dry-run` is a promise the commands
+ * that do not implement it must not accept. A flag that is accepted and then ignored is worse than
+ * a refusal, which is why these two have entries rather than being read where they are used.
+ */
+type TargetOnlyFlag = {
+  flag: string;
+  command: CommandId;
+  target: TargetId;
+};
+
+const TARGET_ONLY_FLAGS: TargetOnlyFlag[] = [
+  { flag: "--full", command: "add", target: "claude" },
+  { flag: "--dry-run", command: "config-compact", target: "claude" },
+];
+
+/**
+ * Builds the sentence a scope refusal carries.
+ *
+ * The generic form is a last resort rather than the rule. Two refusals have a reason worth
+ * stating: a `shared` command refuses a selection because it asks a question with no answer, and
+ * `config compact` refuses Codex because it has no Codex form at all. Neither is a missing
+ * capability, and reporting one as a missing capability would be the wrong fix.
+ */
+function refusalMessageFor(refusal: TargetScopeRefusal): string {
+  switch (refusal.kind) {
+    case "shared":
+      return `"${refusal.command}" operates on state every target shares, so it cannot be narrowed with ${refusal.token}.`;
+    case "no-form":
+      return `${commandLabel(refusal.command)} has no ${TARGET_METADATA[refusal.target].label} form: it requires an explicit ${selectorLabel(refusal.required)}.`;
+    case "requires-selection":
+      return `${commandLabel(refusal.command)} requires ${selectorLabel(refusal.target)}: it has no default target, so the target must be named.`;
+    case "unsupported":
+      return `"${refusal.command}" does not support ${refusal.token}.`;
+  }
+}
+
+/**
+ * Turns one refusal into the error the CLI reports, with the details its consumers read.
+ *
+ * Every refusal names the commands the selection *would* apply to, so a caller does not have to
+ * guess whether the argument or the command was the mistake. The missing-selection refusal is the
+ * exception: the command is right and the target is known, so a list of alternatives would be noise.
+ */
+function refusalError(refusal: TargetScopeRefusal) {
+  const message = refusalMessageFor(refusal);
+  if (refusal.kind === "requires-selection") {
+    return cliError("INVALID_ARGUMENT", message, { command: refusal.command });
+  }
+
+  return cliError("INVALID_ARGUMENT", message, {
+    command: refusal.command,
+    supportedCommands: commandsAccepting(refusal.target),
+  });
+}
+
+/**
+ * Settles one invocation's scope and refuses any flag that would be ignored, returning the targets
+ * it covers.
+ *
+ * Called by `executeCommand` before anything reads a file, and before the Claude routing decision,
+ * not after it: a Claude-capable command such as `switch --claude --full` reaches the Claude path,
+ * so a check placed after that branch would never see the stray flag.
+ *
+ * The order is normative. Selection is resolved first — including the requirement that
+ * `config compact` name its target — because a flag that only applies to a Claude command has no
+ * answer at all on a command Claude cannot run. Both judgements read the same normalized
+ * `TargetSelection`, so `--claude` and `--target claude` cannot disagree anywhere downstream.
  *
  * `globalOptions` is what makes the `--codex-dir` check possible: that flag is stripped by the
- * parser into the global options rather than recorded in the command-option map, so it is not a
- * guard entry and cannot be seen without it.
+ * parser into the global options rather than recorded in the command-option map, so it is not one
+ * of the entries above and cannot be seen without it.
  */
 export function assertFlagsApply(
   command: CommandId,
+  selection: TargetSelection,
   commandOptions: Map<string, string[]>,
   globalOptions: { codexDirExplicit?: boolean } = {}
-): void {
-  const claudeRequested = commandOptions.has("--claude");
+): TargetId[] {
+  const decision = resolveCommandTargets(command, selection);
+  if ("refusal" in decision) {
+    throw refusalError(decision.refusal);
+  }
 
-  for (const guard of FLAG_GUARDS) {
-    if (!commandOptions.has(guard.flag)) {
+  for (const entry of TARGET_ONLY_FLAGS) {
+    if (!commandOptions.has(entry.flag)) {
       continue;
     }
 
-    if (!guard.accepts(command)) {
-      throw cliError("INVALID_ARGUMENT", refusalMessageFor(guard, command), {
-        command,
-        supportedCommands: guard.supportedCommands(),
-      });
-    }
-
-    if (guard.requiresClaude && !claudeRequested) {
-      throw cliError("INVALID_ARGUMENT", `${guard.flag} only applies together with --claude.`, {
-        command,
-        flag: guard.flag,
-      });
+    const applies =
+      command === entry.command && selection.kind === "explicit" && selection.id === entry.target;
+    if (!applies) {
+      throw cliError(
+        "INVALID_ARGUMENT",
+        `${entry.flag} only applies to ${TARGET_METADATA[entry.target].label}: pass ${selectorLabel(entry.target)} with "${commandLabel(entry.command)}".`,
+        { command, flag: entry.flag, supportedCommands: [entry.command] }
+      );
     }
   }
 
   // Only the `both` commands refuse this pair. On a `switchable` command `aps list --claude
   // --codex-dir X` was a long-standing accepted form that never read the directory, and changing
   // it is not this release's business; on `doctor`, `status`, and `backups list` the Codex
-  // directory is genuinely part of what the command would otherwise report, so naming one under
-  // `--claude` is a request the command cannot honour.
-  if (globalOptions.codexDirExplicit && claudeRequested && scopeOf(command) === "both") {
+  // directory is genuinely part of what the command would otherwise report, so naming one under a
+  // Claude selection is a request the command cannot honour.
+  if (globalOptions.codexDirExplicit && selection.kind === "explicit" && selection.id === "claude" && scopeOf(command) === "both") {
     throw cliError(
       "INVALID_ARGUMENT",
       `"${command}" reports both targets; --codex-dir does not apply when --claude narrows it to Claude.`,
       { command, flag: "--codex-dir" }
     );
   }
+
+  return decision.targets;
 }

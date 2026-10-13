@@ -1,4 +1,4 @@
-import { BackupRoots, restoreImpactOf } from "../domain/backups";
+import { BackupOwnership, restoreImpactOf } from "../domain/backups";
 import { cliError, normalizeError } from "../domain/errors";
 import { loadLatestManifest, loadManifestById, restoreManifest } from "../storage/backup-repo";
 import { CommandResult } from "./types";
@@ -6,10 +6,10 @@ import { CommandResult } from "./types";
 /**
  * Restores either the latest backup or a specific historical backup by id.
  *
- * `roots` is read only to report which targets the restore touched. The roots a restore may write
- * into stay in `allowedRoots`, which the caller builds: this function's answer about a manifest is
- * a label, and the containment check that decides whether the manifest is honoured at all must not
- * be derived from that same manifest.
+ * `ownership` is read only to report which targets the restore touched. The roots a restore may
+ * write into stay in `allowedRoots`, which the caller builds: this function's answer about a
+ * manifest is a label, and the containment check that decides whether the manifest is honoured at
+ * all must not be derived from that same manifest.
  *
  * The reported set is derived from the file paths, not from the manifest's recorded target. The
  * field's whole job is to tell the user what just changed on disk, and a recorded target answers a
@@ -20,7 +20,7 @@ export function rollbackBackup(args: {
   latestBackupPath: string;
   backupsDir: string;
   allowedRoots: string[];
-  roots: BackupRoots;
+  ownership: BackupOwnership;
   backupId?: string | null;
 }): CommandResult {
   const manifest = args.backupId
@@ -32,7 +32,7 @@ export function rollbackBackup(args: {
     // Computed after the restore, not before: the impact is a statement about what was written,
     // and a restore that was refused by containment must not publish one. The throw below is what
     // keeps the two in step.
-    const impact = restoreImpactOf(manifest, args.roots);
+    const impact = restoreImpactOf(manifest, args.ownership);
     return {
       data: {
         restoredFiles: manifest.files.map((file) => file.relativePath),

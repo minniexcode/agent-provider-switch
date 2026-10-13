@@ -1,11 +1,12 @@
 import { CommandResult } from "../app/types";
 import { cliError } from "../domain/errors";
-import { resolveTarget, selectedTargets } from "../domain/target";
 import { createPromptRuntime, CliPromptRuntime } from "../interaction/prompt";
-import { CODEX_DIR_ENV_NAME, createToolHomePaths, resolveCodexDir } from "../storage/codex-paths";
+import { CODEX_DIR_ENV_NAME, resolveCodexDir } from "../storage/codex-paths";
+import { createToolHomePaths } from "../storage/tool-home-paths";
 import { readToolConfigIfExists } from "../storage/tool-config-repo";
 import { ensureLegacyToolHomeMigrated } from "../storage/tool-home-migration";
 import { assertFlagsApply } from "./flag-guards";
+import { handleRegisteredCommand } from "./handlers";
 import { findCommandDefinition } from "./registry";
 import { CommandExecutionContext, CommandId, ParsedCommand } from "./types";
 import { ToolConfigInspection, inspectToolConfig } from "../app/inspect-tool-config";
@@ -32,40 +33,22 @@ export async function executeCommand(
   ctx.targets = [];
 
   // Scope is settled before any I/O, which is the ordering `1.1.3` makes normative. It has two
-  // consequences that are easy to get backwards: a command whose flags are refused never runs the
-  // legacy-home migration first (so a `backups prune --claude` cannot move a directory on its way
-  // to being rejected), and a failure *after* an accepted scope — a migration fault, an unreadable
-  // tool config, a handler error — reports the accepted scope rather than emptying it.
+  // consequences that are easy to get backwards: a command whose selection is refused never runs
+  // the legacy-home migration first (so a `backups prune --claude` cannot move a directory on its
+  // way to being rejected), and a failure *after* an accepted scope — a migration fault, an
+  // unreadable tool config, a handler error — reports the accepted scope rather than emptying it.
   //
-  // Both flag judgements live here rather than in `handleRegisteredCommand`, for one reason: the
-  // resolved targets have to reach `ctx` before the handler runs, because the handler is what
-  // throws the failures the envelope has to describe. The definition lookup above is the first
-  // point where the command id is known to be a real one, and that is all either judgement needs.
+  // One call settles everything a command line can be wrong about, and it returns the accepted
+  // targets so the envelope field is written from the decision rather than recomputed from the
+  // flags. `config compact`'s requirement that its target be named is part of that decision now: it
+  // is a property of the command's policy, so asking it here is the same question the guard asks,
+  // and the handler no longer has to ask it again.
   //
-  // The guard is asked first, and it judges each flag on its own. Only once both `--claude` and
-  // `--codex` are individually acceptable does the question of whether they contradict each other
-  // arise, and that question belongs to `resolveTarget()`: a pair rule inside the guard loop would
-  // have to be re-checked per entry and would report the conflict on whichever flag the table
-  // happened to list second.
-  assertFlagsApply(definition.id, parsed.commandOptions, parsed.globalOptions);
-
   // `definition.id`, not `ctx.command`: the context's `command` is the wider
   // `CommandId | "help" | "version"` union that the pre-dispatch render paths need, while the
   // definition found above is proof that a real command id resolved. Passing the narrowed value
   // keeps these parameters honest instead of widening them to the union.
-  const resolution = resolveTarget({
-    command: definition.id,
-    claudeRequested: parsed.commandOptions.has("--claude"),
-    codexRequested: parsed.commandOptions.has("--codex"),
-  });
-  if ("refusal" in resolution) {
-    throw cliError(resolution.refusal.code, resolution.refusal.message, { command: ctx.command });
-  }
-
-  // The refusal above is all `resolveTarget()` is read for: its `target` arm assumes one target
-  // per command, and a `both` command covers two. `selectedTargets()` is the only reader of the
-  // flags for those, so it — not `resolveTarget()` — decides what the envelope reports.
-  ctx.targets = selectedTargets(definition.id, parsed.commandOptions);
+  ctx.targets = assertFlagsApply(definition.id, parsed.targetSelection, parsed.commandOptions, parsed.globalOptions);
 
   // The one funnel every command passes through, whichever target it names — `handleClaudeCommand`
   // is only reachable from a registered handler — so a single call site covers Codex and Claude
@@ -90,7 +73,11 @@ export async function executeCommand(
     ctx.options.codexDir = resolveCodexDir(ctx.options.codexDir ?? undefined, toolConfig);
   }
 
-  const result = await definition.handler(ctx, parsed, runtime);
+  // One handler for every registered command: the registry declares *what* each command is, and the
+  // handler switch below it decides what it does. That is deliberate — the handlers are the
+  // execution layer `cli.ts` loads dynamically, so this import is what keeps `--help` from pulling
+  // in the app services, the inquirer runtime and the Codex probe (design §4.3).
+  const result = await handleRegisteredCommand(ctx, parsed, runtime);
   if (migrationWarnings.length === 0) {
     return result;
   }

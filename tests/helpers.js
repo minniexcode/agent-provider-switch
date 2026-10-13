@@ -105,6 +105,14 @@ async function withEnv(overrides, run) {
  * `~/.claude` when `APS_CLAUDE_DIR` is unset — so a spec that forgets the variable overwrites
  * the developer's live Claude Code settings. Every check below runs before the callback does, and
  * the callback receives only the verified path.
+ *
+ * `APS_HOME` is set here for the same reason, one directory over. A Claude write goes to
+ * `<APS_HOME>/claude-providers.json`, and `createToolHomePaths()` falls back to the real
+ * `~/.config/agent-provider-switch` when the variable is unset — so a spec that arranged the
+ * Claude root but not the tool home would still rewrite the developer's own registry. Specs that
+ * run through `runJsonCli()` were already covered, because `runBuiltCli()` points `APS_HOME` at
+ * the tool home it was given; a spec that reaches past the entry point, as the prompt suite does to
+ * inject a runtime, was not.
  */
 async function withClaudeEnv(settings, run) {
   const toolHomeDir = makeToolHomeWithManagedState();
@@ -124,7 +132,9 @@ async function withClaudeEnv(settings, run) {
     `Claude root must stay inside the test temp directory, got ${claudeDir}`
   );
 
-  return withEnv({ APS_CLAUDE_DIR: claudeDir }, () => run({ toolHomeDir, claudeDir, importFile }));
+  return withEnv({ APS_CLAUDE_DIR: claudeDir, APS_HOME: toolHomeDir }, () =>
+    run({ toolHomeDir, claudeDir, importFile })
+  );
 }
 
 /**

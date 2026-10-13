@@ -10,7 +10,7 @@ import {
   TOOL_CONFIG_FILENAME,
   TOOL_HOME_DIRNAME,
   TOOL_HOME_ENV_NAME,
-} from "./codex-paths";
+} from "./tool-home-paths";
 import { renameWithRetryOnWindows } from "./fs-utils";
 import { describeLockOwner, inspectLock } from "./lock-repo";
 

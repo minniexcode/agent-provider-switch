@@ -11,12 +11,12 @@ import {
   readStructuredConfig,
 } from "../storage/config-repo";
 import { ensureDir } from "../storage/fs-utils";
-import { createClaudePaths } from "../storage/claude-paths";
-import { TOOL_CONFIG_FILENAME } from "../storage/codex-paths";
+import { TOOL_CONFIG_FILENAME } from "../storage/tool-home-paths";
 import { inspectToolConfig } from "./inspect-tool-config";
 import { mergeProviders, readProvidersFileIfExists, writeProvidersFile } from "../storage/providers-repo";
 import { MIN_SUPPORTED_CODEX_VERSION } from "../runtime/codex-version";
-import { runDoctor } from "./run-doctor";
+import { collectReport } from "./collect-target-reports";
+import { createCodexReportPort } from "./targets/report-ports";
 import { runMutation } from "./run-mutation";
 import { CommandResult } from "./types";
 
@@ -157,28 +157,26 @@ export async function migrateCodex(args: {
 
   // Re-run doctor on the final state so migrate returns immediate post-migration diagnostics.
   // Codex only, which is what `1.1.2` reported and what this command is about: migrate writes
-  // Codex state, so a Claude finding in its result would be about a target it never touched.
-  // The Claude paths are supplied because `runDoctor()` requires them of every caller — an
-  // out-of-scope target reads nothing, so nothing here is probed or reported.
+  // Codex state, so a Claude finding in its result would be about a target it never touched — and
+  // only the Codex port is built, so no Claude path is resolved or read at all.
   const toolHomeDir = path.dirname(args.backupsDir);
   const inspection = inspectToolConfig(path.join(toolHomeDir, TOOL_CONFIG_FILENAME));
-  const claudePaths = createClaudePaths(toolHomeDir);
-  const doctor = await runDoctor({
+  const doctor = await collectReport({
+    mode: "doctor",
     targets: ["codex"],
     toolHomeRoot: toolHomeDir,
-    codex: {
-      codexDir: args.codexDir,
-      codexDirUnavailableReason: null,
-      providersPath: args.providersPath,
-      defaultsPresent: inspection.reading.status === "ok" && inspection.reading.value.defaultsPresent,
-    },
-    claude: {
-      claudeDir: claudePaths.claudeDir,
-      claudeProvidersPath: claudePaths.claudeProvidersPath,
-      claudeSettingsPath: claudePaths.claudeSettingsPath,
-    },
     toolConfig: inspection,
     lockPath: args.lockPath,
+    ports: new Map([
+      [
+        "codex",
+        createCodexReportPort({
+          providersPath: args.providersPath,
+          codexDir: args.codexDir,
+          codexDirUnavailableReason: null,
+        }),
+      ],
+    ]),
   });
 
   return {
