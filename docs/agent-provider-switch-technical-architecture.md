@@ -68,6 +68,16 @@ Commands that mutate local state include `init`, `migrate`, `add`, `edit`, `swit
 
 Optional bridge or account-runtime checks are not part of `0.2.1` diagnostics.
 
+## Error Vocabulary
+
+**An error code names a condition and never a target.** The two lines share one vocabulary: `PROVIDER_NOT_FOUND`, `PROVIDERS_NOT_FOUND`, `PROVIDERS_PARSE_ERROR`, and `PROVIDER_ALREADY_EXISTS` are raised by Codex and Claude code alike. A `CLAUDE_`-prefixed code is not permitted anywhere in `src/`; the invariant is asserted by `tests/error-vocabulary.spec.js`.
+
+What distinguishes the two lines is the envelope's `target` field, written once from the resolved target on both the success and the failure path, plus the `message`, which keeps naming the target where the state calls for it (`Claude provider "x" was not found.`).
+
+Two codes are one character apart and must stay distinct: `PROVIDER_ALREADY_EXISTS` means a record with that name exists, and `PROVIDERS_ALREADY_EXISTS` means the registry file exists.
+
+The error space and the doctor's *issue* space share some names and are deliberately not unified. An error is a failed run; an issue is a finding on a successful run. `DESTRUCTIVE_REMOVE_BLOCKED` and the other config-issue codes live in the issue space and are not members of `ErrorCode`.
+
 ## Removed Runtime Experiments
 
 `0.2.1` removes current runtime code paths for Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, bridge logs, and bridge runtime state. Historical docs describe those experiments, but current architecture does not expose them.

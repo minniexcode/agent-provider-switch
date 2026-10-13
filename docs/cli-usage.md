@@ -1,14 +1,16 @@
 # CLI Usage
 
-This document describes the current `1.1.1` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
+This document describes the current `1.1.2` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects the active Codex route into `config.toml` and `auth.json`, and switches Claude Code `settings.json` profiles.
 
 ## Version
 
-Current package version: `1.1.1`
+Current package version: `1.1.2`
 
 This line targets Codex `0.134.0+`, where the active route is selected by top-level `model` plus `model_provider`. Legacy top-level `profile` and `[profiles.*]` sections may still be inspected for migration/adoption, and `--create-profile` writes one on request, but they are not the recommended managed route.
+
+`1.1.2` is **breaking for `--json` consumers**. Error codes no longer name a target: `CLAUDE_PROVIDER_NOT_FOUND`, `CLAUDE_PROVIDERS_NOT_FOUND`, `CLAUDE_PROVIDERS_PARSE_ERROR`, and `CLAUDE_PROVIDER_ALREADY_EXISTS` become `PROVIDER_NOT_FOUND`, `PROVIDERS_NOT_FOUND`, `PROVIDERS_PARSE_ERROR`, and `PROVIDER_ALREADY_EXISTS`; `CLAUDE_SETTINGS_NOT_FOUND` is deleted (it was declared and never thrown). The Claude payload loses its `data.target` field. Exit codes and messages are unchanged, and `target` on the envelope is now the supported way to tell the two lines apart. See the migration table in [CHANGELOG.md](../CHANGELOG.md).
 
 `1.1.1` makes the target explicit. Every command acts on Codex unless `--claude` says otherwise; `--codex` names that default. The two flags name different targets and are refused together with `INVALID_ARGUMENT` rather than resolved by a precedence rule. The JSON envelope gains a `target` field, written on failures as well as successes. `config compact` refuses `--codex`, since it rewrites Claude provider records and has no Codex form. No command gains or loses a target.
 
@@ -78,7 +80,7 @@ Provider settings tend to overlap almost entirely. `agent-provider-switch.json` 
 
 ```json
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -283,7 +285,9 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 
 `target` is `"codex"`, `"claude"`, or `null` when no command resolved — the help, version, and pre-dispatch failure paths have no target to name. It is written on the failure envelope too, so a caller reading an error envelope does not have to infer which target the invocation was about from the error code.
 
-A failure that happened *after* the target resolved reports that target: `aps switch --claude missing --json` fails with `CLAUDE_PROVIDER_NOT_FOUND` and `"target": "claude"`. A failure that *is* the resolution failing reports `null`, because no target was settled on — `aps status --claude --json` (a command with no Claude path) and `aps list --claude --codex --json` (two contradictory flags) both fail with `INVALID_ARGUMENT` and `"target": null`. `null` therefore means "no target was resolved", never "Codex was assumed".
+A failure that happened *after* the target resolved reports that target: `aps switch --claude missing --json` fails with `PROVIDER_NOT_FOUND` and `"target": "claude"`. A failure that *is* the resolution failing reports `null`, because no target was settled on — `aps status --claude --json` (a command with no Claude path) and `aps list --claude --codex --json` (two contradictory flags) both fail with `INVALID_ARGUMENT` and `"target": null`. `null` therefore means "no target was resolved", never "Codex was assumed".
+
+**An error code names a condition, never a target.** `PROVIDER_NOT_FOUND` covers a missing Codex provider and a missing Claude provider alike; the `message` says which ("Claude provider "ghost" was not found."), and `target` says which line the invocation was on. Two codes that differ by one character are kept distinct on purpose: `PROVIDER_ALREADY_EXISTS` means a *record* with that name is taken, and `PROVIDERS_ALREADY_EXISTS` means the registry *file* already exists. A payload does not repeat the target: `data.target` was removed in `1.1.2`, so read it from the envelope.
 
 Failures render the same envelope to stderr with `ok: false` and a structured error. A failure never writes the envelope to stdout, so a caller that pipes stdout gets nothing rather than a message that looks like a result.
 
@@ -300,7 +304,7 @@ There is no `2` for usage errors and no code map. An unrecognized command exited
 
 ## Current Non-Goals
 
-`1.1.1` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
+`1.1.2` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
 
 It also does not provide a redacted export mode, Claude Code plugin marketplace management, a generic target abstraction, a TTL-based lock takeover, an audit log for takeovers, or an exit-code taxonomy. There is no command that creates or edits the `claudeDefaults` block, and no export or import of Claude provider records.
 
@@ -308,6 +312,8 @@ It also does not provide a redacted export mode, Claude Code plugin marketplace 
 
 Current:
 
+- [PRD 1.1.2](./PRD/agent-provider-switch-prd-v1.1.2.md)
+- [Design 1.1.2](./Design/agent-provider-switch-v1.1.2-design.md)
 - [PRD 1.1.1](./PRD/agent-provider-switch-prd-v1.1.1.md)
 - [Design 1.1.1](./Design/agent-provider-switch-v1.1.1-design.md)
 - [PRD 1.1.0](./PRD/agent-provider-switch-prd-v1.1.0.md)

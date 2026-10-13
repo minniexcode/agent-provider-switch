@@ -13,7 +13,7 @@ import { writeTextFileAtomic } from "./fs-utils";
  */
 export function readClaudeProvidersFile(providersPath: string): ClaudeProvidersFile {
   if (!fs.existsSync(providersPath)) {
-    throw cliError("CLAUDE_PROVIDERS_NOT_FOUND", "claude-providers.json not found. Run `aps add --claude` first.", {
+    throw cliError("PROVIDERS_NOT_FOUND", "claude-providers.json not found. Run `aps add --claude` first.", {
       file: providersPath,
     });
   }
@@ -21,7 +21,7 @@ export function readClaudeProvidersFile(providersPath: string): ClaudeProvidersF
   try {
     return validateClaudeProvidersShape(JSON.parse(raw));
   } catch (error: unknown) {
-    throw cliError("CLAUDE_PROVIDERS_PARSE_ERROR", "Failed to parse claude-providers.json.", {
+    throw cliError("PROVIDERS_PARSE_ERROR", "Failed to parse claude-providers.json.", {
       file: providersPath,
       cause: normalizeError(error).message,
     });
@@ -49,7 +49,7 @@ export function readClaudeProviderRecord(providersPath: string, providerName: st
   const providers = readClaudeProvidersFile(providersPath);
   const record = providers.providers[providerName];
   if (!record) {
-    throw cliError("CLAUDE_PROVIDER_NOT_FOUND", `Claude provider "${providerName}" was not found.`, {
+    throw cliError("PROVIDER_NOT_FOUND", `Claude provider "${providerName}" was not found.`, {
       provider: providerName,
       file: providersPath,
       availableProviders: Object.keys(providers.providers).sort(),

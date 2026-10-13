@@ -15,6 +15,10 @@ export type JsonEnvelope = {
    * correlating `command` against an error code. That matters most for failures: before this
    * field existed, the only signal that a failed `switch --claude` asked about Claude was the
    * `CLAUDE_` prefix on its error code.
+   *
+   * This is the only place a payload states its target. `data.target` used to carry a second copy,
+   * written by hand in each Claude service, and was removed in `1.1.2` — the envelope is written
+   * once from the resolved target, so a service cannot disagree with it.
    */
   target: TargetId | null;
   data: Record<string, unknown> | null;
@@ -88,11 +92,11 @@ export function renderFailure(ctx: CommandExecutionContext, error: CliErrorShape
 /**
  * Builds the plain-text success view for interactive terminal usage.
  *
- * The target is the resolved one rather than a payload field. The Claude services still write
- * `target: "claude"` into their own `data` — that is a documented payload nobody here reads any
- * more — and the moment this renderer stopped reading it, the field became removable without
- * changing what a human sees. A spec pins the two equal for every Claude-capable command so the
- * removal cannot quietly change which view is chosen.
+ * The target is the resolved one rather than a payload field. The Claude services used to write
+ * their own `target: "claude"` into `data`, and this renderer read that until `1.1.1`; switching to
+ * the resolved target is what made the payload's copy removable, because at the moment it was
+ * deleted it had no reader left inside the repository. `data` is nullable here rather than because
+ * of that change — a resolved Claude target no longer implies a non-null payload.
  */
 function renderHumanSuccess(
   target: TargetId | null,

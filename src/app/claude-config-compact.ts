@@ -89,7 +89,6 @@ function planCompaction(file: ClaudeProvidersFile, defaults: Record<string, unkn
 function buildPayload(plans: CompactPlan[], dryRun: boolean): Record<string, unknown> {
   const changedCount = plans.filter((plan) => plan.changed).length;
   return {
-    target: "claude",
     dryRun,
     changedCount,
     unchangedCount: plans.length - changedCount,

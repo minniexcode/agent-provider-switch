@@ -4,7 +4,9 @@
 
 它把 `agent-provider-switch` 自己的工具状态和目标运行时目录分开，让 provider 管理、备份和运行时投影通过明确命令完成，而不是手工编辑文件。
 
-当前包版本：`1.1.1`
+当前包版本：`1.1.2`
+
+**`1.1.2` 是破坏性的 `--json` 变更。** 错误码不再携带 target 信息，因此五个 `CLAUDE_*` 错误码被并入 Codex 线早已使用的那几个，重复的 `data.target` payload 字段也被删除。每一次拒绝还是同一次拒绝，只是 code 字符串不同；退出码和消息文本都没有变化。见[迁移表](./CHANGELOG.md)，或者直接读 envelope 上的 `target` —— 现在由这个字段说明失败属于哪条线。
 
 `1.1.1` 让 target 变成显式概念。每条命令默认作用于 Codex，除非用 `--claude` 指定；这个默认值现在有了名字：`--codex`。两者指向不同 target，不能同时使用，同时传入会被拒绝，而不是按优先级规则择一。JSON envelope 新增 `target` 字段——`"codex"`、`"claude"`，或在没有解析出命令时为 `null`——成功和失败都会写入。没有任何命令新增或失去 target。
 
@@ -81,7 +83,7 @@ aps show --claude copilot --reveal
 
 ```json
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -157,7 +159,7 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 
 ## 命令面
 
-`1.1.1` 当前命令：
+`1.1.2` 当前命令：
 
 ```text
 aps init
@@ -279,7 +281,7 @@ aps backups prune --keep 5
 
 ## 当前非目标
 
-`1.1.1` 不实现也不预留以下 runtime 代码路径：
+`1.1.2` 不实现也不预留以下 runtime 代码路径：
 
 - 创建或编辑 `claudeDefaults` 块的命令。它需要手工编写；块不存在时 `config compact` 会拒绝执行，而不是去猜哪些键是公共的。
 - Claude provider 记录的导出与导入。这两个命令只支持 Codex。
@@ -315,6 +317,8 @@ npm pack --dry-run
 
 ## 当前事实源
 
+- [PRD 1.1.2](./docs/PRD/agent-provider-switch-prd-v1.1.2.md)
+- [Design 1.1.2](./docs/Design/agent-provider-switch-v1.1.2-design.md)
 - [PRD 1.1.1](./docs/PRD/agent-provider-switch-prd-v1.1.1.md)
 - [Design 1.1.1](./docs/Design/agent-provider-switch-v1.1.1-design.md)
 - [PRD 1.1.0](./docs/PRD/agent-provider-switch-prd-v1.1.0.md)

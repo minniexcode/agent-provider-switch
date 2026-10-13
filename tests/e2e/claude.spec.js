@@ -179,7 +179,7 @@ module.exports = {
 
         runOk(sandbox, ["add", "--claude", "copilot", "--from-file", file, "--json"]);
         const duplicate = runFail(sandbox, ["add", "--claude", "copilot", "--from-file", file, "--json"]);
-        assert.equal(duplicate.json.error.code, "CLAUDE_PROVIDER_ALREADY_EXISTS");
+        assert.equal(duplicate.json.error.code, "PROVIDER_ALREADY_EXISTS");
         assert.match(duplicate.json.error.details.suggestion, /aps remove --claude/);
         // The refusal must not have written anything, so the registry still holds exactly one.
         const registry = JSON.parse(fs.readFileSync(path.join(sandbox.home, "claude-providers.json"), "utf8"));
@@ -191,15 +191,15 @@ module.exports = {
         assert.match(noForce.json.error.message, /requires --force/);
 
         const absent = runFail(sandbox, ["remove", "--claude", "ghost", "--force", "--json"]);
-        assert.equal(absent.json.error.code, "CLAUDE_PROVIDER_NOT_FOUND");
+        assert.equal(absent.json.error.code, "PROVIDER_NOT_FOUND");
         assert.deepEqual(absent.json.error.details.availableProviders, ["copilot"]);
 
         const ghostSwitch = runFail(sandbox, ["switch", "ghost", "--claude", "--json"]);
-        assert.equal(ghostSwitch.json.error.code, "CLAUDE_PROVIDER_NOT_FOUND");
+        assert.equal(ghostSwitch.json.error.code, "PROVIDER_NOT_FOUND");
         assert.deepEqual(ghostSwitch.json.error.details.availableProviders, ["copilot"]);
 
         const ghostShow = runFail(sandbox, ["show", "ghost", "--claude", "--json"]);
-        assert.equal(ghostShow.json.error.code, "CLAUDE_PROVIDER_NOT_FOUND");
+        assert.equal(ghostShow.json.error.code, "PROVIDER_NOT_FOUND");
 
         // `--claude` is not a wildcard: a command outside the supported set rejects it rather than
         // silently running the Codex path, which would report Codex state under a Claude flag.

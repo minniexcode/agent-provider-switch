@@ -2,10 +2,12 @@
 
 This file is the current AI-facing fact sheet for `@minniexcode/agent-provider-switch`.
 
-Current repository version: `1.1.1`
+Current repository version: `1.1.2`
 
 Current fact sources:
 
+- `docs/PRD/agent-provider-switch-prd-v1.1.2.md`
+- `docs/Design/agent-provider-switch-v1.1.2-design.md`
 - `docs/PRD/agent-provider-switch-prd-v1.1.1.md`
 - `docs/Design/agent-provider-switch-v1.1.1-design.md`
 - `docs/PRD/agent-provider-switch-prd-v1.1.0.md`
@@ -28,11 +30,13 @@ Current fact sources:
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects Codex `model_provider` sections, writes the active top-level `model` / `model_provider` route, switches Claude Code `settings.json` profiles, and maintains backups around mutating commands.
 
-In `1.1.1`, there are two managed workflows:
+In `1.1.2`, there are two managed workflows:
 1. **Codex providers** — OpenAI-compatible provider records projected into `config.toml` / `auth.json`. This is the default target, and `--codex` names it explicitly.
 2. **Claude Code providers** (via `--claude` flag) — `settings.json` profiles stored as deltas over an optional shared `claudeDefaults` block, and switched atomically.
 
 The two targets are resolved once per invocation by `resolveTarget()` in `src/domain/target.ts`, which returns `"codex"`, `"claude"`, or a refusal. `--claude --codex` is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule. The resolved value is reported as `target` on every JSON envelope, success and failure alike.
+
+Error codes name a condition and never a target. `CLAUDE_PROVIDER_NOT_FOUND`, `CLAUDE_PROVIDERS_NOT_FOUND`, `CLAUDE_PROVIDERS_PARSE_ERROR`, and `CLAUDE_PROVIDER_ALREADY_EXISTS` were removed in `1.1.2` in favour of `PROVIDER_NOT_FOUND`, `PROVIDERS_NOT_FOUND`, `PROVIDERS_PARSE_ERROR`, and `PROVIDER_ALREADY_EXISTS`; `CLAUDE_SETTINGS_NOT_FOUND` was deleted as dead vocabulary. Messages still name the target where the state needs it (`Claude provider "x" was not found.`), and `PROVIDER_ALREADY_EXISTS` (a record name is taken) stays distinct from `PROVIDERS_ALREADY_EXISTS` (the registry file exists). A Claude payload carries no `target` of its own — the envelope's is the only copy.
 
 ## Primary Workflow (Codex)
 
@@ -159,7 +163,7 @@ Every write command takes one lock (`<toolHome>/.aps.lock`, shared by both targe
 
 ## Current Non-Goals
 
-`1.1.1` does not include:
+`1.1.2` does not include:
 
 - A command that creates or edits the `claudeDefaults` block.
 - Export or import of Claude provider records (both commands are Codex-only).

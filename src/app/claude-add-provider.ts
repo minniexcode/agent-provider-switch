@@ -73,7 +73,7 @@ export async function claudeAddProvider(args: {
     mutate: () => {
       const existing = readClaudeProvidersFileIfExists(args.claudeProvidersPath);
       if (existing.providers[args.providerName]) {
-        throw cliError("CLAUDE_PROVIDER_ALREADY_EXISTS", `Claude provider "${args.providerName}" already exists.`, {
+        throw cliError("PROVIDER_ALREADY_EXISTS", `Claude provider "${args.providerName}" already exists.`, {
           provider: args.providerName,
           suggestion: 'Use a different name or run `aps remove --claude <name>` first.',
         });
@@ -83,7 +83,6 @@ export async function claudeAddProvider(args: {
       // The model reported is the one a switch would write, not whatever the stored delta holds.
       const { effective } = resolveClaudeProviderRecord(record, args.defaults);
       return {
-        target: "claude",
         provider: args.providerName,
         model: (effective.model as string) ?? null,
         // Paths only. A non-empty list is what lets the renderer say the record was slimmed.

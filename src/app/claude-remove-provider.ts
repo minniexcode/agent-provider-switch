@@ -24,14 +24,13 @@ export async function claudeRemoveProvider(args: {
     mutate: () => {
       const existing = readClaudeProvidersFile(args.claudeProvidersPath);
       if (!existing.providers[args.providerName]) {
-        throw cliError("CLAUDE_PROVIDER_NOT_FOUND", `Claude provider "${args.providerName}" was not found.`, {
+        throw cliError("PROVIDER_NOT_FOUND", `Claude provider "${args.providerName}" was not found.`, {
           availableProviders: Object.keys(existing.providers).sort(),
         });
       }
       delete existing.providers[args.providerName];
       writeClaudeProvidersFile(args.claudeProvidersPath, existing);
       return {
-        target: "claude",
         provider: args.providerName,
         removed: true,
       };

@@ -17,7 +17,6 @@ export async function claudeGetCurrent(args: {
   if (!currentSettings) {
     return {
       data: {
-        target: "claude",
         active: null,
         status: "no-settings",
         message: "No Claude Code settings.json found.",
@@ -32,7 +31,6 @@ export async function claudeGetCurrent(args: {
     if (claudeSettingsMatch(record.effective, currentSettings)) {
       return {
         data: {
-          target: "claude",
           active: name,
           model: summary.model,
           baseUrl: summary.baseUrl,
@@ -44,7 +42,6 @@ export async function claudeGetCurrent(args: {
 
   return {
     data: {
-      target: "claude",
       active: null,
       model: summary.model,
       baseUrl: summary.baseUrl,

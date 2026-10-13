@@ -135,7 +135,7 @@ module.exports = {
           args: ["--claude", "list", "--json", "--codex-dir", codexDir],
         });
         assert.equal(result.status, 0, result.stderr);
-        assert.equal(result.payload.data.target, "claude");
+        assert.equal(result.payload.target, "claude");
         assert.deepEqual(result.payload.data.providers, []);
 
         // And the case the design singles out as not working at all before the fix.

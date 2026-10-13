@@ -26,7 +26,7 @@ export async function claudeSwitchProvider(args: {
   const providers = readClaudeProvidersFile(args.claudeProvidersPath);
   const provider = providers.providers[args.providerName];
   if (!provider) {
-    throw cliError("CLAUDE_PROVIDER_NOT_FOUND", `Claude provider "${args.providerName}" was not found.`, {
+    throw cliError("PROVIDER_NOT_FOUND", `Claude provider "${args.providerName}" was not found.`, {
       availableProviders: Object.keys(providers.providers).sort(),
     });
   }
@@ -51,7 +51,6 @@ export async function claudeSwitchProvider(args: {
       writeClaudeSettings(args.claudeSettingsPath, effective);
       const env = effective.env as Record<string, string> | undefined;
       return {
-        target: "claude",
         provider: args.providerName,
         model: (effective.model as string) ?? null,
         baseUrl: env?.ANTHROPIC_BASE_URL ?? null,

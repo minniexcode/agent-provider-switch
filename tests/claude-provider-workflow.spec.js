@@ -68,7 +68,7 @@ module.exports = {
           const result = await addProvider(toolHomeDir, importFile);
 
           assert.equal(result.payload.command, "add");
-          assert.equal(result.payload.data.target, "claude");
+          assert.equal(result.payload.target, "claude");
           assert.equal(result.payload.data.provider, PROVIDER_NAME);
           assert.equal(result.payload.data.model, "claude-sonnet-5");
           assert.equal(readRegistry(toolHomeDir).providers[PROVIDER_NAME].settings.model, "claude-sonnet-5");
@@ -101,7 +101,7 @@ module.exports = {
         await withClaudeEnv(SAMPLE_SETTINGS, async ({ toolHomeDir, claudeDir, importFile }) => {
           const result = await addAndSwitch(toolHomeDir, importFile);
 
-          assert.equal(result.payload.data.target, "claude");
+          assert.equal(result.payload.target, "claude");
           assert.equal(result.payload.data.provider, PROVIDER_NAME);
           assert.equal(result.payload.data.baseUrl, BASE_URL);
 
@@ -125,7 +125,7 @@ module.exports = {
 
           const result = await runClaude(toolHomeDir, ["list", "--claude", "--json"]);
           assert.equal(result.payload.ok, true);
-          assert.equal(result.payload.data.target, "claude");
+          assert.equal(result.payload.target, "claude");
           assert.equal(result.payload.data.count, 1);
           assert.equal(result.payload.data.providers[0].name, PROVIDER_NAME);
           assert.equal(result.payload.data.providers[0].baseUrl, BASE_URL);
@@ -183,7 +183,7 @@ module.exports = {
           ]);
 
           assert.equal(result.payload.ok, true);
-          assert.equal(result.payload.data.target, "claude");
+          assert.equal(result.payload.target, "claude");
           assert.equal(result.payload.data.removed, true);
           assert.equal(readRegistry(toolHomeDir).providers[PROVIDER_NAME], undefined);
         });

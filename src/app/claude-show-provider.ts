@@ -29,7 +29,6 @@ export async function claudeShowProvider(args: {
   const env = (effective.env as Record<string, string> | undefined) ?? {};
 
   const data: Record<string, unknown> = {
-    target: "claude",
     provider: args.providerName,
     model: summary.model,
     baseUrl: summary.baseUrl,

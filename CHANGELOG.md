@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.1.2 - 2026-10-13
+
+**Breaking.** One error vocabulary. The `--json` contract changes in exactly one table: five Claude error codes are renamed and one payload field is removed. Nothing else moves — every refusal is the same refusal, with a different code string, and every exit code and message is unchanged.
+
+**Why the break is worth taking.** An error code should name a condition, not a target. `target` already answers "which target", on every envelope, on success and on failure. A `CLAUDE_` prefix was that same information encoded worse: it could only be read by string matching, it was absent for Codex, and it forced the *condition* to be renamed whenever the *target* was.
+
+### Migration
+
+| `1.1.1` | `1.1.2` | Note |
+|---|---|---|
+| `CLAUDE_PROVIDER_NOT_FOUND` | `PROVIDER_NOT_FOUND` | The Codex code for the same condition. |
+| `CLAUDE_PROVIDERS_NOT_FOUND` | `PROVIDERS_NOT_FOUND` | The Codex code for "the registry is absent, or holds no providers". |
+| `CLAUDE_PROVIDERS_PARSE_ERROR` | `PROVIDERS_PARSE_ERROR` | The Codex code for an unparsable registry. |
+| `CLAUDE_PROVIDER_ALREADY_EXISTS` | `PROVIDER_ALREADY_EXISTS` | **Renamed, not merged.** It means a *record* with that name is taken; `PROVIDERS_ALREADY_EXISTS` means the registry *file* already exists. The singular is the new name. |
+| `CLAUDE_SETTINGS_NOT_FOUND` | *deleted* | Declared and never thrown, so nothing could observe it. |
+| `data.target` on a Claude payload | *deleted* | The envelope's `target` replaces it. |
+
+There is no deprecation window and no `legacyCode` alias: a transitional field would have to be removed later, and every consumer that never read the old codes would pay for it.
+
+### Changed
+
+- Error codes no longer name a target. `target` on the envelope is the supported way to tell the Codex and Claude lines apart, and it is written on failures as well as successes.
+- The Claude refusal *messages* are unchanged. A missing Claude provider still fails with `Claude provider "x" was not found.` — the code names the condition, the sentence describes the state. Collapsing the sentences too would have made a Claude failure read as a Codex one.
+- `data.target` is gone from the Claude payload. It was a hand-written copy of a fact the envelope already states, and each of the seven Claude services wrote it itself.
+
+### Added
+
+- `PROVIDER_ALREADY_EXISTS`, alongside the existing `PROVIDERS_ALREADY_EXISTS`. They are one character apart on purpose and the distinction is asserted: a record with that name exists, versus the registry file exists.
+- `tests/error-vocabulary.spec.js` — asserts no error code string in `src/` starts with `CLAUDE_`, that every declared code has a producer apart from a recorded list of five, and that the singular and plural codes stay distinct.
+
+### Notes
+
+- The unproduced-code census found more debt than the design recorded. Four codes are declared and thrown nowhere (`LIVE_STATE_DRIFT`, `AUTH_JSON_SYNC_FAILED`, `ACTIVE_PROVIDER_UNRESOLVED`, `UNMANAGED_ACTIVE_PROFILE`), and a fifth (`PROVIDER_BASE_URL_MISMATCH`) is rendered by the doctor as a *config issue* — a different space, and the one that made the original `DESTRUCTIVE_REMOVE_BLOCKED` exception wrong to name, since that code is a config-issue member and not an error code at all. All five are left in place and pinned by the test, which fails if the set grows.
+- The two vocabularies stay separate: an issue is a finding on a successful run and an error is a failed run. Conflating them would make `healthy: false` indistinguishable from a crash.
+
 ## 1.1.1 - 2026-10-13
 
 Target-explicit release. During the 1.1.x line the CLI manages two targets — Codex by default, Claude Code under `--claude` — but the code recorded which one an invocation meant in three separate informal ways: a boolean from `isClaudeCommand()`, a `data.target` field each Claude service wrote by hand, and a `claude-` prefix on mutation operation names. This release writes that value down once, as `TargetId`, and gives it a name a user can type. Additive and backward compatible: no command gains or loses a target, and the two registries, the projection model, the merge rule, the lock discipline, and the rollback containment are untouched.

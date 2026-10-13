@@ -4,7 +4,9 @@
 
 It keeps `agent-provider-switch` tool state separate from the target runtime directories, so managed providers, backups, and runtime projection are handled through explicit commands instead of manual file edits.
 
-Current package version: `1.1.1`
+Current package version: `1.1.2`
+
+**`1.1.2` is a breaking `--json` release.** Error codes no longer name a target, so the five `CLAUDE_*` codes are renamed onto the ones the Codex line already used, and the duplicated `data.target` payload field is gone. Every refusal is the same refusal, with a different code string; exit codes and messages are unchanged. Read the [migration table](./CHANGELOG.md), or read `target` on the envelope — that is the field that now says which line a failure belongs to.
 
 `1.1.1` makes the target explicit. Every command acts on Codex unless `--claude` says otherwise, and that default now has a name: `--codex`. The two name different targets and cannot be combined, so passing both is refused rather than resolved by a precedence rule. The JSON envelope gains a `target` field — `"codex"`, `"claude"`, or `null` when no command resolved — written on failures as well as successes. No command gains or loses a target.
 
@@ -85,7 +87,7 @@ Provider settings tend to overlap almost entirely: the same dozen env flags, the
 
 ```json
 {
-  "version": "1.1.1",
+  "version": "1.1.2",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -168,7 +170,7 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 
 ## Commands
 
-Current `1.1.1` command surface:
+Current `1.1.2` command surface:
 
 ```text
 aps init
@@ -290,7 +292,7 @@ A directory that any surviving manifest still references is never deleted, so a 
 
 ## Current Non-Goals
 
-`1.1.1` does not implement or reserve runtime code paths for:
+`1.1.2` does not implement or reserve runtime code paths for:
 
 - A command that creates or edits the `claudeDefaults` block. It is written by hand; `config compact` refuses when it is absent rather than guessing which keys are shared.
 - Export or import of Claude provider records. Both commands are Codex-only.
@@ -328,6 +330,8 @@ npm pack --dry-run
 
 Current fact sources:
 
+- [PRD 1.1.2](./docs/PRD/agent-provider-switch-prd-v1.1.2.md)
+- [Design 1.1.2](./docs/Design/agent-provider-switch-v1.1.2-design.md)
 - [PRD 1.1.1](./docs/PRD/agent-provider-switch-prd-v1.1.1.md)
 - [Design 1.1.1](./docs/Design/agent-provider-switch-v1.1.1-design.md)
 - [PRD 1.1.0](./docs/PRD/agent-provider-switch-prd-v1.1.0.md)

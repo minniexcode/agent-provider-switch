@@ -146,7 +146,7 @@ export async function handleClaudeCommand(
       }
 
       if (!providerName) {
-        throw cliError("CLAUDE_PROVIDER_NOT_FOUND", "Missing provider name for switch --claude command.");
+        throw cliError("PROVIDER_NOT_FOUND", "Missing provider name for switch --claude command.");
       }
 
       return claudeSwitchProvider({
@@ -215,7 +215,7 @@ export async function handleClaudeCommand(
       }
 
       if (!providerName) {
-        throw cliError("CLAUDE_PROVIDER_NOT_FOUND", "Missing provider name for remove --claude command.");
+        throw cliError("PROVIDER_NOT_FOUND", "Missing provider name for remove --claude command.");
       }
 
       if (!force && !canPrompt(runtime, ctx.options.json)) {
@@ -276,7 +276,7 @@ async function promptForClaudeProviderSelection(
   const file = resolveClaudeProvidersFile(readClaudeProvidersFileIfExists(claudeProvidersPath), defaults);
   const names = Object.keys(file.providers).sort();
   if (names.length === 0) {
-    throw cliError("CLAUDE_PROVIDERS_NOT_FOUND", "No Claude providers registered. Run `aps add --claude` first.");
+    throw cliError("PROVIDERS_NOT_FOUND", "No Claude providers registered. Run `aps add --claude` first.");
   }
 
   const currentSettings = readClaudeSettings(claudeSettingsPath);

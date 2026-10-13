@@ -221,17 +221,16 @@ module.exports = {
       },
     },
     {
-      name: "the Claude payload target and the envelope target agree",
+      name: "the target lives on the envelope and nowhere in the payload",
       async run() {
-        // `data.target` is written by the Claude services and the envelope's `target` by the
-        // renderer, so the two are set in different places. 1.1.2 deletes the former; until then
-        // this is the assertion that makes that removal provably behaviour-preserving.
+        // `data.target` was a second copy, written by hand in each Claude service. 1.1.1 moved the
+        // human renderer off it, which is what made it removable, and 1.1.2 removed it; the
+        // envelope is written once from the resolved target, so a payload cannot disagree with it.
         const result = await runJsonCli({ args: ["list", "--claude", "--json"] });
         assert.equal(result.status, 0, result.stderr);
-        assert.equal(result.payload.data.target, result.payload.target);
+        assert.equal(result.payload.target, "claude");
+        assert.equal(result.payload.data.target, undefined);
 
-        // And the Codex path sets no payload target at all, so the envelope field is the only
-        // place a consumer can read it from.
         const codex = await runJsonCli({
           toolHomeDir: makeToolHomeWithManagedState(),
           args: ["list", "--json"],

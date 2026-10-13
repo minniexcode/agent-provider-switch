@@ -87,22 +87,47 @@ copy is the mistake this release exists to stop repeating.
 
 ## 4. Enforcement
 
-- **`src/` contains no target-prefixed error code.** A spec greps every `.ts` file under `src/` for
-  `/CLAUDE_[A-Z_]+/` and asserts no match. This is the same shape as the `1.0.0` rename's
-  negative-assertion test, and it is what keeps a future contributor from introducing
-  `CLAUDE_SOMETHING_NOT_FOUND` out of habit.
+Three corrections to this section were made during implementation; each was a statement about the
+tree that the tree did not support, and each is recorded here rather than quietly fixed.
+
+- **`src/` contains no target-prefixed error code.** The sketch was a grep for `/CLAUDE_[A-Z_]+/`
+  over every `.ts` file under `src/`. That regex cannot hold: `APS_CLAUDE_DIR`, `CLAUDE_COMMANDS`,
+  and `CLAUDE_DIR_ENV_NAME` all contain the substring legitimately, so the bare form would need an
+  allowlist of identifiers — the kind of exception that hides the real offender it exists to catch.
+  The implemented test requires the **quotes** a code string has and an identifier does not
+  (`/["']CLAUDE_[A-Z_]+["']/`), which matches `"CLAUDE_PROVIDER_NOT_FOUND"` and not
+  `"APS_CLAUDE_DIR"`. Nothing is allowlisted, and it is the same shape as the `1.0.0` rename's
+  negative assertion: it keeps a contributor from introducing `CLAUDE_SOMETHING_NOT_FOUND` out of
+  habit.
 - **Every declared code has a producer.** A spec collects the string literals passed to `cliError()`
-  and to `readRequiredFile()`'s code parameter, and asserts every other member of `ErrorCode` is
-  produced somewhere. One code is excepted by name: `DESTRUCTIVE_REMOVE_BLOCKED` is only ever
-  rendered and never produced, which the `0.3.x` roadmap already records as a known pre-existing
-  wart. The test lists it as an exception rather than silently allowing it, so the exception is
-  visible and removing the code later fails the test in the useful direction.
+  and to `readRequiredFile()`'s code parameter, and asserts the set of unproduced `ErrorCode`
+  members is exactly a recorded list. That list has **five** entries, not one:
+  `LIVE_STATE_DRIFT`, `AUTH_JSON_SYNC_FAILED`, `ACTIVE_PROVIDER_UNRESOLVED`,
+  `UNMANAGED_ACTIVE_PROFILE`, and `PROVIDER_BASE_URL_MISMATCH`. The `DESTRUCTIVE_REMOVE_BLOCKED`
+  this section originally named is not in `ErrorCode` at all — it is a member of the *config-issue*
+  union in `src/domain/config.ts`, a different space the census never walks, which is why naming it
+  here was wrong even though the observation about it ("only ever rendered, never produced") is
+  accurate. The last two of the five are also doctor-facing issue strings that were given error
+  codes as well; the first three are simply dead. The list is asserted exactly in both directions,
+  so declaring a new unproduced code fails, and producing one of these also fails until it is
+  deleted from the list.
 - **The two similar codes stay distinct.** A spec asserts `aps add --claude <duplicate>` yields
-  `PROVIDER_ALREADY_EXISTS` and `aps init` over an existing registry yields `PROVIDERS_ALREADY_EXISTS`,
-  so a later "cleanup" that merges the pair is caught.
+  `PROVIDER_ALREADY_EXISTS` and a `migrate` into a non-empty registry yields
+  `PROVIDERS_ALREADY_EXISTS`, so a later "cleanup" that merges the pair is caught. The originally
+  sketched second case, `aps init` over an existing registry, does not raise the code: `init` is
+  idempotent and returns success. `import` does not raise it either — it replaces the file. The
+  reachable producers are `migrate` in `handlers.ts` and `setup-codex.ts`, and the test names the
+  first.
 
 ## 5. Residual risks
 
+- **Four dead codes stay in the union.** `CLAUDE_SETTINGS_NOT_FOUND` was deleted because it was the
+  code this release's rename table covered, but `LIVE_STATE_DRIFT`, `AUTH_JSON_SYNC_FAILED`,
+  `ACTIVE_PROVIDER_UNRESOLVED`, and `UNMANAGED_ACTIVE_PROFILE` are just as unproduced and are left
+  alone: deleting them is a break of the same class, and this release's break is deliberately one
+  table wide. `PROVIDER_BASE_URL_MISMATCH` joins them for a different reason — the doctor renders it
+  as an issue, so the name is live even though nothing throws it as an error. The census test pins
+  the set, which is the mitigation: the debt is recorded in a test that fails if it grows.
 - **`PROVIDER_NOT_FOUND` and `PROVIDERS_NOT_FOUND` differ by one character.** This is a
   pre-existing hazard that this release makes marginally more visible, because the Claude vocabulary
   no longer offers a contrast that reminds a reader the pair exists. Renaming either is a break of
@@ -137,7 +162,9 @@ copy is the mistake this release exists to stop repeating.
   singular/plural distinction.
 - `tests/e2e/claude.spec.js` carries four asserted codes, all of which change.
 - `tests/e2e/errors.spec.js` and `tests/e2e/renderers.spec.js` carry the human and JSON assertions
-  for the shared codes, which do not change but do gain a Claude-side twin worth asserting.
+  for the shared codes, which do not change. The Claude-side twin turned out to belong in the new
+  in-process spec rather than in an e2e one: `show --claude ghost` against a seeded registry is the
+  whole assertion, and it does not need a child process to make its point.
 - `docs/cli-usage.md`: the JSON Contract section, the Claude workflow section, and Version section.
   `docs/agent-provider-switch-technical-architecture.md` gains the invariant "an error code names a
   condition and never a target".

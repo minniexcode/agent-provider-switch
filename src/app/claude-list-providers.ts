@@ -34,7 +34,6 @@ export async function claudeListProviders(args: {
 
   return {
     data: {
-      target: "claude",
       providers,
       count: providers.length,
     },
