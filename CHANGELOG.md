@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.1.1 - 2026-10-13
+
+Target-explicit release. During the 1.1.x line the CLI manages two targets — Codex by default, Claude Code under `--claude` — but the code recorded which one an invocation meant in three separate informal ways: a boolean from `isClaudeCommand()`, a `data.target` field each Claude service wrote by hand, and a `claude-` prefix on mutation operation names. This release writes that value down once, as `TargetId`, and gives it a name a user can type. Additive and backward compatible: no command gains or loses a target, and the two registries, the projection model, the merge rule, the lock discipline, and the rollback containment are untouched.
+
+### Added
+
+- `--codex`, a named alias for the target a command acts on by default. It is accepted everywhere except `config compact`, which rewrites Claude provider records and has no Codex form. Naming the default must not fail, so it carries almost no refusal surface; it exists so a command line reads the same whichever target it picks, and so the pair rule below has something to refuse.
+- `src/domain/target.ts` — `TargetId`, `TARGET_IDS`, and `resolveTarget()`, a pure function taking the resolved command id and the two `--claude` / `--codex` booleans. It answers "which target did the caller name" and deliberately does not consult the Claude capability set, which answers a different question.
+- A `target` field on the JSON envelope, written by `renderSuccess()` and `renderFailure()` alike. It is `"codex"`, `"claude"`, or `null` when no command resolved, and it is written on the failure path too — until now the only signal that a failed `--claude` invocation had anything to do with Claude was the error code's name.
+- `tests/target-resolution.spec.js`, table-driven over every command id, so adding a command without deciding which flags it accepts fails the suite. `docs/PRD/agent-provider-switch-prd-v1.1.1.md` and `docs/Design/agent-provider-switch-v1.1.1-design.md`.
+
+### Changed
+
+- `--claude --codex` on one command line is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule. Letting `--claude` win as the more specific flag would silently ignore a flag the user typed.
+- `config compact` refuses `--codex`, naming the reason, instead of parsing it and ignoring it.
+- The top-level `--help` global-options block lists `--claude` and `--codex`. `--claude` had been documented per-command but never in the global list.
+- The flag guards moved from `handleRegisteredCommand()` to `executeCommand()`, which is the one funnel every command passes through. The guard has to see the command before the target can be assigned, and the target has to be assigned before the handler — which is what throws the failures the envelope has to describe — can run.
+
+### Notes
+
+- `backups prune`, `rollback`, and `unlock` accept `--codex` and do nothing with it. Those three act on shared state, and `1.1.3` is the release that makes them scope-aware; refusing the flag here would need that release's scope table, and shipping half of it is how a `doctor` ends up reporting one target under a flag that asked for two.
+- `data.target` still exists on the Claude payload alongside the envelope's `target`, which is now the same value stated twice. `1.1.2` removes the former; a spec pins the two equal in the meantime so the removal is provably behaviour-preserving.
+- `TargetId` is a closed union of two, so a third target is a type change plus an exhaustive-switch failure at every consumer. That is the intended shape, but it also means this release does not by itself make a third target cheap — that is `1.2.0`'s job.
+
 ## 1.1.0 - 2026-10-08
 
 Shared-defaults release. A Claude provider has always been stored as a complete `settings.json`, and most of that is identical across providers: in the real tool home that prompted this, 10 `env` keys and 4 top-level keys were byte-identical in all four records. This release lets the shared part live once, in the tool config, with each record storing only what differs. Additive and backward compatible: a tool home without the new block behaves exactly as `1.0.0` did, and existing full records stay valid.

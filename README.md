@@ -4,7 +4,9 @@
 
 It keeps `agent-provider-switch` tool state separate from the target runtime directories, so managed providers, backups, and runtime projection are handled through explicit commands instead of manual file edits.
 
-Current package version: `1.1.0`
+Current package version: `1.1.1`
+
+`1.1.1` makes the target explicit. Every command acts on Codex unless `--claude` says otherwise, and that default now has a name: `--codex`. The two name different targets and cannot be combined, so passing both is refused rather than resolved by a precedence rule. The JSON envelope gains a `target` field — `"codex"`, `"claude"`, or `null` when no command resolved — written on failures as well as successes. No command gains or loses a target.
 
 `1.1.0` lets Claude Code providers share their common settings. A `claudeDefaults` block in `agent-provider-switch.json` holds the settings every provider repeats, each provider record stores only what differs, and `aps switch --claude` writes the two layered together. `aps config compact --claude` rewrites existing records into that form, and `aps add --claude` now stores new ones that way. Nothing is required: a tool home without the block behaves exactly as before. See [Shared Claude defaults](#shared-claude-defaults).
 
@@ -83,7 +85,7 @@ Provider settings tend to overlap almost entirely: the same dozen env flags, the
 
 ```json
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -166,7 +168,7 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 
 ## Commands
 
-Current `1.1.0` command surface:
+Current `1.1.1` command surface:
 
 ```text
 aps init
@@ -196,6 +198,8 @@ aps setup
 `setup` is deprecated and exists only as a pointer to `init` for fresh state or `migrate` for advanced adoption of existing Codex config.
 
 All commands accept `--json` for the standard JSON envelope where supported by the parser, and `--codex-dir <path>` to target a specific Codex directory. `--codex-dir` requires a path: a following token that starts with `-` is refused rather than taken as the value.
+
+Every command acts on Codex unless `--claude` says otherwise. `--codex` names that default, and the two flags contradict each other: passing both is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule. `--codex` is accepted wherever Codex state is what the command acts on; the one exception is `aps config compact`, which rewrites Claude provider records and refuses it.
 
 ## Runtime Projection
 
@@ -286,7 +290,7 @@ A directory that any surviving manifest still references is never deleted, so a 
 
 ## Current Non-Goals
 
-`1.1.0` does not implement or reserve runtime code paths for:
+`1.1.1` does not implement or reserve runtime code paths for:
 
 - A command that creates or edits the `claudeDefaults` block. It is written by hand; `config compact` refuses when it is absent rather than guessing which keys are shared.
 - Export or import of Claude provider records. Both commands are Codex-only.
@@ -297,7 +301,9 @@ A directory that any surviving manifest still references is never deleted, so a 
 - Built-in third-party router packaging.
 - Account systems or cloud sync.
 - Claude Code plugin marketplace management.
-- Generic "target" abstraction or pluggable provider type system.
+- A target *descriptor* — a table saying how each target stores its providers and what it can do. `1.1.1` names the target and resolves it; the two targets still have their own hand-written code paths. A third target is the task that will need the descriptor.
+- A `--target <id>` flag. `--claude` and `--codex` are the only target flags.
+- A pluggable provider type system.
 - A TTL-based lock takeover. A slow `migrate` can exceed any timer, so a recycled pid is fail-closed and `aps unlock --force` is the way out.
 - An audit log for lock takeovers; the takeover reports through the existing result payload.
 - An exit-code taxonomy. Success is `0` and failure is `1`; there is no `2` for usage errors and no code map.
@@ -322,6 +328,8 @@ npm pack --dry-run
 
 Current fact sources:
 
+- [PRD 1.1.1](./docs/PRD/agent-provider-switch-prd-v1.1.1.md)
+- [Design 1.1.1](./docs/Design/agent-provider-switch-v1.1.1-design.md)
 - [PRD 1.1.0](./docs/PRD/agent-provider-switch-prd-v1.1.0.md)
 - [Design 1.1.0](./docs/Design/agent-provider-switch-v1.1.0-design.md)
 - [PRD 1.0.0](./docs/PRD/agent-provider-switch-prd-v1.0.0.md)

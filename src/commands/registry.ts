@@ -11,7 +11,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "Show the current route summary and legacy profile view.",
-    usage: ["aps config show [profile] [--json] [--codex-dir <path>]"],
+    usage: ["aps config show [profile] [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--codex"],
     details: [
       "Returns current top-level model/model_provider together with recognizable legacy profile sections.",
       "Passing [profile] narrows the legacy profile view to one section while preserving the same shape.",
@@ -24,7 +25,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "List recognizable legacy config profiles with managed-state hints.",
-    usage: ["aps config list-profiles [--json] [--codex-dir <path>]"],
+    usage: ["aps config list-profiles [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--codex"],
     details: [
       "Lists managed, unmanaged, and orphaned legacy profile sections in one stable view.",
       "Use config show for the current route summary and richer single-profile details.",
@@ -37,7 +39,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Initialize the agent-provider-switch tool home for the primary workflow.",
-    usage: ["aps init [--json] [--codex-dir <path>]"],
+    usage: ["aps init [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--codex"],
     details: [
       "Creates agent-provider-switch.json and providers.json under the tool home when they do not exist yet.",
       "Does not create or validate config.toml, auth.json, or the target Codex directory.",
@@ -53,8 +56,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Adopt existing Codex runtime profiles into managed providers.json state.",
-    usage: ["aps migrate [--json] [--codex-dir <path>] [--merge|--overwrite]"],
-    booleanFlags: ["--merge", "--overwrite"],
+    usage: ["aps migrate [--codex] [--json] [--codex-dir <path>] [--merge|--overwrite]"],
+    booleanFlags: ["--merge", "--overwrite", "--codex"],
     details: [
       "Reads legacy config.toml profiles, collects complete provider records, then writes providers.json under managed backup flow.",
       "TTY mode can collect missing provider details and choose merge or overwrite when providers.json already exists.",
@@ -84,8 +87,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "List managed providers with model-provider routing and current-state hints.",
-    usage: ["aps list [--claude] [--json] [--codex-dir <path>]"],
-    booleanFlags: ["--claude"],
+    usage: ["aps list [--claude] [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--claude", "--codex"],
     details: [
       "Reads providers.json and prints provider-to-model-provider mappings.",
       "When the active model_provider is shared by multiple providers, list surfaces the ambiguity instead of inventing one current provider.",
@@ -100,8 +103,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "Show one provider record from providers.json.",
-    usage: ["aps show <provider> [--claude] [--json] [--reveal] [--codex-dir <path>]"],
-    booleanFlags: ["--claude"],
+    usage: ["aps show <provider> [--claude] [--codex] [--json] [--reveal] [--codex-dir <path>]"],
+    booleanFlags: ["--claude", "--codex"],
     details: [
       "Human-readable output masks apiKey by default.",
       "TTY mode can select a missing provider interactively before showing its record.",
@@ -117,8 +120,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "Show the active top-level model/model_provider route from config.toml.",
-    usage: ["aps current [--claude] [--json] [--codex-dir <path>]"],
-    booleanFlags: ["--claude"],
+    usage: ["aps current [--claude] [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--claude", "--codex"],
     details: ["Reads the currently active top-level model and model_provider.", "Use --claude to detect the active Claude Code profile.", "Fails when config.toml is missing or has no top-level model_provider."],
     examples: ["aps current", "aps current --claude", "aps current --json"],
   },
@@ -128,7 +131,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "read",
     summary: "Show target Codex directory, managed route, and health status.",
-    usage: ["aps status [--json] [--codex-dir <path>]"],
+    usage: ["aps status [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--codex"],
     details: [
       "Reports the target Codex directory, tool-home root, current model, current model_provider, and whether the live route is mapped.",
       "Surfaces dual-path config consistency signals without mutating any files.",
@@ -144,10 +148,10 @@ export const COMMANDS: CommandDefinition[] = [
     group: "write",
     summary: "Update fields on a single provider record.",
     usage: [
-      "aps edit <provider> [--profile <model-provider-id>] [--api-key <key>] [--base-url <url>] [--model <name>] [--note <text>] [--tag <tag> ...] [--create-profile] [--json] [--codex-dir <path>]",
+      "aps edit <provider> [--profile <model-provider-id>] [--api-key <key>] [--base-url <url>] [--model <name>] [--note <text>] [--tag <tag> ...] [--create-profile] [--codex] [--json] [--codex-dir <path>]",
       "aps edit <provider> --profile <model-provider-id> --model <name> --base-url <url>",
     ],
-    booleanFlags: ["--create-profile"],
+    booleanFlags: ["--create-profile", "--codex"],
     details: [
       "Passed flags replace only the selected fields and keep the rest unchanged.",
       "TTY mode can first select a provider, then prompt for fields when no editable options were provided.",
@@ -166,11 +170,11 @@ export const COMMANDS: CommandDefinition[] = [
     group: "write",
     summary: "Add a managed provider.",
     usage: [
-      "aps add <provider> --profile <model-provider-id> --model <name> --api-key <key> [--base-url <url>] [--note <text>] [--tag <tag> ...]",
+      "aps add <provider> --profile <model-provider-id> --model <name> --api-key <key> [--base-url <url>] [--note <text>] [--tag <tag> ...] [--codex]",
       "aps add --claude <name> --from-file <settings.json> [--full] [--note <text>] [--tag <tag> ...]",
-      "aps add [--profile <model-provider-id>] [--model <name>] [--api-key <key>] [--base-url <url>] [--note <text>] [--tag <tag> ...] [--create-profile]",
+      "aps add [--profile <model-provider-id>] [--model <name>] [--api-key <key>] [--base-url <url>] [--note <text>] [--tag <tag> ...] [--create-profile] [--codex]",
     ],
-    booleanFlags: ["--claude", "--create-profile", "--full"],
+    booleanFlags: ["--claude", "--codex", "--create-profile", "--full"],
     details: [
       "Prompts only for missing required values when stdin/stdout are TTYs and --json is not set.",
       "Interactive add collects provider name, model_provider id, model, and apiKey progressively as plain text inputs.",
@@ -196,8 +200,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Switch the active runtime to a managed provider.",
-    usage: ["aps switch <provider> [--claude] [--json] [--codex-dir <path>]"],
-    booleanFlags: ["--claude"],
+    usage: ["aps switch <provider> [--claude] [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--claude", "--codex"],
     details: [
       "When <provider> is omitted in a TTY, an interactive provider selector is shown.",
       "When <provider> is passed explicitly, switch proceeds directly without extra confirmation.",
@@ -214,8 +218,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Remove a provider from providers.json.",
-    usage: ["aps remove <provider> [--claude] [--force] [--switch-to <provider>] [--json] [--codex-dir <path>]"],
-    booleanFlags: ["--claude", "--force"],
+    usage: ["aps remove <provider> [--claude] [--codex] [--force] [--switch-to <provider>] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--claude", "--codex", "--force"],
     details: [
       "TTY mode can select a missing provider interactively and always asks for deletion confirmation.",
       "Non-TTY and --json automation still require both <provider> and --force.",
@@ -232,8 +236,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Replace providers.json with an external JSON file.",
-    usage: ["aps import <file> [--merge] [--json] [--codex-dir <path>]"],
-    booleanFlags: ["--merge"],
+    usage: ["aps import <file> [--merge] [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--merge", "--codex"],
     details: [
       "The file path is always explicit; there is no path wizard in this release.",
       "TTY mode asks for confirmation before replacing or merging into the current providers registry.",
@@ -247,8 +251,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "write",
     summary: "Export the current providers.json to another file.",
-    usage: ["aps export <file> [--force] [--json] [--codex-dir <path>]"],
-    booleanFlags: ["--force"],
+    usage: ["aps export <file> [--force] [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--force", "--codex"],
     details: [
       "The file path is always explicit; there is no path wizard in this release.",
       "TTY mode asks before overwriting an existing target when --force is not supplied.",
@@ -279,7 +283,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "recovery",
     summary: "List historical backup entries.",
-    usage: ["aps backups list [--json] [--codex-dir <path>]"],
+    usage: ["aps backups list [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--codex"],
     details: [
       "Enumerates backups/ manifests and returns them newest first.",
       "Corrupt backup manifests are skipped with warnings instead of failing the whole command.",
@@ -293,6 +298,11 @@ export const COMMANDS: CommandDefinition[] = [
     group: "recovery",
     summary: "Delete old backup directories beyond the retention count.",
     usage: ["aps backups prune [--keep <count>] [--json] [--codex-dir <path>]"],
+    // Declared but not advertised. The parser strips `--codex` here and the guard accepts it, so
+    // leaving it out would make the declaration wrong; the usage line omits it because `1.1.3`
+    // refuses it on this command, and advertising a flag with one release left is worse than
+    // omitting it. The same applies to `rollback` and `unlock`.
+    booleanFlags: ["--codex"],
     details: [
       "Keeps the newest backups and deletes the rest, defaulting to 20.",
       "A directory that any surviving manifest still references is never deleted, because rollback resolves through it.",
@@ -307,7 +317,8 @@ export const COMMANDS: CommandDefinition[] = [
     handler: handleRegisteredCommand,
     group: "recovery",
     summary: "Run issue-first diagnostics across tool-home and target-runtime state.",
-    usage: ["aps doctor [--json] [--codex-dir <path>]"],
+    usage: ["aps doctor [--codex] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--codex"],
     details: [
       "Checks the expected config files, provider/model-provider consistency, and Codex CLI availability.",
       "Returns structured issues so users and AI agents can act on them.",
@@ -321,7 +332,7 @@ export const COMMANDS: CommandDefinition[] = [
     group: "recovery",
     summary: "Clear a lock left behind by a process that no longer exists.",
     usage: ["aps unlock [--force] [--json]"],
-    booleanFlags: ["--force"],
+    booleanFlags: ["--force", "--codex"],
     details: [
       "Clears the lock only when the recorded owner is provably gone; a live owner is refused.",
       "--force clears it regardless, which is the documented path for a recycled pid.",
@@ -337,6 +348,7 @@ export const COMMANDS: CommandDefinition[] = [
     group: "recovery",
     summary: "Restore the latest managed backup or a specific backup id.",
     usage: ["aps rollback [<backup-id>] [--json] [--codex-dir <path>]"],
+    booleanFlags: ["--codex"],
     details: [
       "TTY mode previews the target backup path and affected files, then asks for confirmation.",
       "Non-TTY and --json runs stay non-interactive and execute immediately.",

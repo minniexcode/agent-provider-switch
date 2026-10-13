@@ -44,7 +44,6 @@ import { createCodexPaths, resolveLockPath } from "../storage/codex-paths";
 import { mergeProviders, readProvidersFileIfExists } from "../storage/providers-repo";
 import { getSingleOption, hasFlag } from "./args";
 import { handleClaudeCommand, isClaudeCommand } from "./claude-handlers";
-import { assertFlagsApply } from "./flag-guards";
 import { CommandExecutionContext, ParsedCommand } from "./types";
 
 /**
@@ -55,11 +54,10 @@ export async function handleRegisteredCommand(
   parsed: ParsedCommand,
   runtime = createPromptRuntime()
 ): Promise<import("../app/types").CommandResult> {
-  // Refuse a flag the command would ignore before anything else runs — including the Claude
-  // early-return below, which would otherwise let `switch --claude --full` through. See
-  // `flag-guards.ts` for why accepted-and-ignored is the dangerous reading.
-  assertFlagsApply(ctx.command, parsed.commandOptions);
-
+  // The flag guards have already run — `executeCommand` calls them, because the guard's refusal
+  // has to be raised while the context still carries a definite target, and because it must land
+  // before the Claude early-return below (which would otherwise let `switch --claude --full`
+  // through and reach a handler that ignores `--full`).
   if (isClaudeCommand(ctx.command, parsed.commandOptions)) {
     return handleClaudeCommand(ctx, parsed, runtime);
   }

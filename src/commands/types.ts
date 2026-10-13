@@ -1,3 +1,4 @@
+import type { TargetId } from "../domain/target";
 import type { AgentProviderSwitchConfig } from "../storage/codex-paths";
 
 /**
@@ -55,6 +56,16 @@ export type ParsedCommand = {
 export type CommandExecutionContext = {
   command: CommandId | "help" | "version";
   options: GlobalOptions;
+  /**
+   * The target this invocation names, resolved once by `executeCommand`.
+   *
+   * Required, with an explicit `null` rather than an optional field, so every construction site
+   * states its answer instead of defaulting to `undefined` — the same convention `restoreManifest`'s
+   * allowlist and the Claude services' `defaults` argument follow. `null` means "no command
+   * resolved": the help, version, and pre-dispatch failure paths built in `cli.ts` all pass it,
+   * and they must, because those never reach dispatch to have it filled in.
+   */
+  target: TargetId | null;
   /**
    * The parsed tool config, set by `executeCommand` from the read it already performs for
    * `defaultCodexDir`. Absent when no tool config exists, and absent in any context built

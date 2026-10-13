@@ -2,10 +2,12 @@
 
 This file is the current AI-facing fact sheet for `@minniexcode/agent-provider-switch`.
 
-Current repository version: `1.1.0`
+Current repository version: `1.1.1`
 
 Current fact sources:
 
+- `docs/PRD/agent-provider-switch-prd-v1.1.1.md`
+- `docs/Design/agent-provider-switch-v1.1.1-design.md`
 - `docs/PRD/agent-provider-switch-prd-v1.1.0.md`
 - `docs/Design/agent-provider-switch-v1.1.0-design.md`
 - `docs/PRD/agent-provider-switch-prd-v1.0.0.md`
@@ -26,9 +28,11 @@ Current fact sources:
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects Codex `model_provider` sections, writes the active top-level `model` / `model_provider` route, switches Claude Code `settings.json` profiles, and maintains backups around mutating commands.
 
-In `1.1.0`, there are two managed workflows:
-1. **Codex providers** — OpenAI-compatible provider records projected into `config.toml` / `auth.json`.
+In `1.1.1`, there are two managed workflows:
+1. **Codex providers** — OpenAI-compatible provider records projected into `config.toml` / `auth.json`. This is the default target, and `--codex` names it explicitly.
 2. **Claude Code providers** (via `--claude` flag) — `settings.json` profiles stored as deltas over an optional shared `claudeDefaults` block, and switched atomically.
+
+The two targets are resolved once per invocation by `resolveTarget()` in `src/domain/target.ts`, which returns `"codex"`, `"claude"`, or a refusal. `--claude --codex` is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule. The resolved value is reported as `target` on every JSON envelope, success and failure alike.
 
 ## Primary Workflow (Codex)
 
@@ -155,7 +159,7 @@ Every write command takes one lock (`<toolHome>/.aps.lock`, shared by both targe
 
 ## Current Non-Goals
 
-`1.1.0` does not include:
+`1.1.1` does not include:
 
 - A command that creates or edits the `claudeDefaults` block.
 - Export or import of Claude provider records (both commands are Codex-only).
@@ -166,7 +170,9 @@ Every write command takes one lock (`<toolHome>/.aps.lock`, shared by both targe
 - Built-in third-party router packaging.
 - Account systems or cloud sync.
 - Claude Code plugin marketplace management.
-- Generic "target" abstraction or pluggable provider type system.
+- A target descriptor — a table declaring how each target stores providers and what it can do. The target is named and resolved, but each target still has its own hand-written code path. A third target is the task that forces the descriptor.
+- A `--target <id>` flag. `--claude` and `--codex` are the only target flags.
+- A pluggable provider type system.
 - Field-based Claude provider creation (only `--from-file` import is supported).
 - TTL-based lock takeover, or an audit log for takeovers.
 - An exit-code taxonomy: success is `0`, failure is `1`.

@@ -4,7 +4,9 @@
 
 它把 `agent-provider-switch` 自己的工具状态和目标运行时目录分开，让 provider 管理、备份和运行时投影通过明确命令完成，而不是手工编辑文件。
 
-当前包版本：`1.1.0`
+当前包版本：`1.1.1`
+
+`1.1.1` 让 target 变成显式概念。每条命令默认作用于 Codex，除非用 `--claude` 指定；这个默认值现在有了名字：`--codex`。两者指向不同 target，不能同时使用，同时传入会被拒绝，而不是按优先级规则择一。JSON envelope 新增 `target` 字段——`"codex"`、`"claude"`，或在没有解析出命令时为 `null`——成功和失败都会写入。没有任何命令新增或失去 target。
 
 `1.1.0` 让 Claude Code provider 共享公共设置。`agent-provider-switch.json` 中的 `claudeDefaults` 块保存所有 provider 重复出现的设置，每个 provider 记录只存自己独有的部分，`aps switch --claude` 把两层叠加后写入。`aps config compact --claude` 把已有记录改写成这种形式，`aps add --claude` 现在也以这种形式保存新记录。这一切都是可选的：没有这个块的工具 home 行为与以前完全一致。详见[共享 Claude 默认设置](#共享-claude-默认设置)。
 
@@ -79,7 +81,7 @@ aps show --claude copilot --reveal
 
 ```json
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -155,7 +157,7 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 
 ## 命令面
 
-`1.1.0` 当前命令：
+`1.1.1` 当前命令：
 
 ```text
 aps init
@@ -185,6 +187,8 @@ aps setup
 `setup` 已废弃，只保留为指向 `init` 或 `migrate` 的兼容入口。
 
 所有命令都接受 `--json` 标准 JSON envelope（以解析器支持为限），以及用于指定目标 Codex 目录的 `--codex-dir <path>`。`--codex-dir` 必须跟路径：紧随其后以 `-` 开头的 token 会被拒绝，而不是被当作路径。
+
+每条命令默认作用于 Codex，除非用 `--claude` 指定。`--codex` 是这个默认值的显式名字，两者互相矛盾：同时传入会以 `INVALID_ARGUMENT` 拒绝，而不是按优先级择一。凡是命令作用于 Codex 状态的地方都接受 `--codex`；唯一例外是 `aps config compact`，它改写的是 Claude provider 记录，因此会拒绝该 flag。
 
 ## Runtime 投影
 
@@ -275,7 +279,7 @@ aps backups prune --keep 5
 
 ## 当前非目标
 
-`1.1.0` 不实现也不预留以下 runtime 代码路径：
+`1.1.1` 不实现也不预留以下 runtime 代码路径：
 
 - 创建或编辑 `claudeDefaults` 块的命令。它需要手工编写；块不存在时 `config compact` 会拒绝执行，而不是去猜哪些键是公共的。
 - Claude provider 记录的导出与导入。这两个命令只支持 Codex。
@@ -286,7 +290,9 @@ aps backups prune --keep 5
 - 内置第三方 router 封装。
 - 账号系统或云同步。
 - Claude Code 插件市场管理。
-- 泛化的 "target" 抽象或可插拔 provider 类型系统。
+- target *描述符* —— 一张声明每个 target 如何存储 provider、能做什么的表。`1.1.1` 命名并解析 target，两个 target 各自仍走手写代码路径。第三个 target 才是必须引入描述符的任务。
+- `--target <id>` flag。target flag 只有 `--claude` 和 `--codex`。
+- 可插拔 provider 类型系统。
 - 基于 TTL 的锁接管。慢速 `migrate` 可以超过任何计时器，因此被复用的 pid 一律 fail-closed，出口是 `aps unlock --force`。
 - 锁接管的审计日志；接管结果通过现有的结果 payload 报告。
 - 退出码分类体系。成功为 `0`，失败为 `1`；没有用于用法错误的 `2`，也没有 code map。
@@ -309,6 +315,8 @@ npm pack --dry-run
 
 ## 当前事实源
 
+- [PRD 1.1.1](./docs/PRD/agent-provider-switch-prd-v1.1.1.md)
+- [Design 1.1.1](./docs/Design/agent-provider-switch-v1.1.1-design.md)
 - [PRD 1.1.0](./docs/PRD/agent-provider-switch-prd-v1.1.0.md)
 - [Design 1.1.0](./docs/Design/agent-provider-switch-v1.1.0-design.md)
 - [PRD 1.0.0](./docs/PRD/agent-provider-switch-prd-v1.0.0.md)

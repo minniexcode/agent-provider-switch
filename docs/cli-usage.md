@@ -1,14 +1,16 @@
 # CLI Usage
 
-This document describes the current `1.1.0` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
+This document describes the current `1.1.1` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects the active Codex route into `config.toml` and `auth.json`, and switches Claude Code `settings.json` profiles.
 
 ## Version
 
-Current package version: `1.1.0`
+Current package version: `1.1.1`
 
 This line targets Codex `0.134.0+`, where the active route is selected by top-level `model` plus `model_provider`. Legacy top-level `profile` and `[profiles.*]` sections may still be inspected for migration/adoption, and `--create-profile` writes one on request, but they are not the recommended managed route.
+
+`1.1.1` makes the target explicit. Every command acts on Codex unless `--claude` says otherwise; `--codex` names that default. The two flags name different targets and are refused together with `INVALID_ARGUMENT` rather than resolved by a precedence rule. The JSON envelope gains a `target` field, written on failures as well as successes. `config compact` refuses `--codex`, since it rewrites Claude provider records and has no Codex form. No command gains or loses a target.
 
 `1.1.0` lets Claude Code providers share their common settings through an optional `claudeDefaults` block in `agent-provider-switch.json`. A provider record then stores only what differs, and `switch --claude` writes the two layered together. It adds `config compact --claude [--dry-run]`, `add --claude ... --full`, and the global `--full` / `--dry-run` flags. A tool home without the block behaves exactly as before. See [Shared Claude Defaults](#shared-claude-defaults).
 
@@ -26,6 +28,7 @@ This line targets Codex `0.134.0+`, where the active route is selected by top-le
 | `--reveal` | Print secret values instead of masking them. Affects `show --claude` only. |
 | `--codex-dir <path>` | Target a specific Codex directory instead of `~/.codex`. Requires a path: a following token starting with `-` is refused. |
 | `--claude` | Target the Claude Code path on the commands that support it. |
+| `--codex` | Target the Codex path. This is the default, named. Accepted everywhere except `config compact`. |
 | `--full` | With `add --claude`, store every entry of the imported file instead of only those that differ from the shared defaults. |
 | `--dry-run` | With `config compact --claude`, report what would change without taking the lock or writing anything. |
 | `--help`, `-h` | Show top-level or command-specific help. |
@@ -34,6 +37,8 @@ This line targets Codex `0.134.0+`, where the active route is selected by top-le
 `--reveal` is parsed as a **global** flag, not a per-command option. The command-option pass treats any `--flag <non-flag>` pair as a valued option, so a per-command `--reveal` would swallow the provider name that follows it. As a global flag it is matched by exact token, and both `show --claude --reveal <name>` and `show --claude <name> --reveal` work. `--json` and `--codex-dir` are stripped in the same pass.
 
 `--claude` is also global, but it is accepted only by `add`, `switch`, `list`, `show`, `current`, `remove`, and `config compact`. On any other command it is refused with `INVALID_ARGUMENT` naming that set. Ignoring it would answer the wrong question — `aps status --claude` would report Codex state under a flag that asked about Claude.
+
+`--codex` is global and accepted by every command except `config compact`, which rewrites Claude provider records and has no Codex form. Naming the default must not fail, so it carries almost no refusal surface; it exists so a command line reads the same whichever target it picks. `--claude --codex` names two different targets and is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule — letting `--claude` win as the "more specific" flag would silently ignore a flag the user typed. Three commands — `backups prune`, `rollback`, and `unlock` — accept `--codex` and do nothing with it: they act on shared state, and the release that makes them scope-aware (`1.1.3`) is the one that introduces the scope table needed to refuse it.
 
 `--full` and `--dry-run` follow the same rule for the same reason: the parser accepts a global boolean anywhere, so each is refused with `INVALID_ARGUMENT` on any command that would ignore it. `--full` applies only to `add --claude`, and `--dry-run` only to `config compact --claude`. The check runs before the Claude path is entered, so `aps switch --claude --full` is refused too. Accepted-and-ignored is the dangerous reading: `aps backups prune --dry-run` would otherwise delete real backups under a flag that promised a preview.
 
@@ -73,7 +78,7 @@ Provider settings tend to overlap almost entirely. `agent-provider-switch.json` 
 
 ```json
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -269,11 +274,16 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 {
   "ok": true,
   "command": "status",
+  "target": "codex",
   "data": {},
   "warnings": [],
   "error": null
 }
 ```
+
+`target` is `"codex"`, `"claude"`, or `null` when no command resolved — the help, version, and pre-dispatch failure paths have no target to name. It is written on the failure envelope too, so a caller reading an error envelope does not have to infer which target the invocation was about from the error code.
+
+A failure that happened *after* the target resolved reports that target: `aps switch --claude missing --json` fails with `CLAUDE_PROVIDER_NOT_FOUND` and `"target": "claude"`. A failure that *is* the resolution failing reports `null`, because no target was settled on — `aps status --claude --json` (a command with no Claude path) and `aps list --claude --codex --json` (two contradictory flags) both fail with `INVALID_ARGUMENT` and `"target": null`. `null` therefore means "no target was resolved", never "Codex was assumed".
 
 Failures render the same envelope to stderr with `ok: false` and a structured error. A failure never writes the envelope to stdout, so a caller that pipes stdout gets nothing rather than a message that looks like a result.
 
@@ -290,7 +300,7 @@ There is no `2` for usage errors and no code map. An unrecognized command exited
 
 ## Current Non-Goals
 
-`1.1.0` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
+`1.1.1` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
 
 It also does not provide a redacted export mode, Claude Code plugin marketplace management, a generic target abstraction, a TTL-based lock takeover, an audit log for takeovers, or an exit-code taxonomy. There is no command that creates or edits the `claudeDefaults` block, and no export or import of Claude provider records.
 
@@ -298,6 +308,8 @@ It also does not provide a redacted export mode, Claude Code plugin marketplace 
 
 Current:
 
+- [PRD 1.1.1](./PRD/agent-provider-switch-prd-v1.1.1.md)
+- [Design 1.1.1](./Design/agent-provider-switch-v1.1.1-design.md)
 - [PRD 1.1.0](./PRD/agent-provider-switch-prd-v1.1.0.md)
 - [Design 1.1.0](./Design/agent-provider-switch-v1.1.0-design.md)
 - [PRD 1.0.0](./PRD/agent-provider-switch-prd-v1.0.0.md)

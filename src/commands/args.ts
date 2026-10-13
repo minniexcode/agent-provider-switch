@@ -13,8 +13,13 @@ import { resolveCommandFromArgv } from "./registry";
  *
  * `--reveal` is deliberately absent. It is stripped by the same exact-token rule a few lines
  * down, so listing it here would be a no-op rather than a fix. It stays global.
+ *
+ * `--codex` is here rather than in `GlobalOptions` because it carries no value: its presence is
+ * recorded in `commandOptions` and read through `hasFlag()`, and the target it names is resolved
+ * once in `dispatch.ts` and carried on the execution context. A mirrored `GlobalOptions` field
+ * would be a second source of truth for a fact that already has one.
  */
-const BOOLEAN_FLAGS = new Set(["--claude", "--force", "--merge", "--overwrite", "--create-profile", "--full", "--dry-run"]);
+const BOOLEAN_FLAGS = new Set(["--claude", "--codex", "--force", "--merge", "--overwrite", "--create-profile", "--full", "--dry-run"]);
 
 /**
  * Parses argv into command positionals, global flags, and command-scoped options.

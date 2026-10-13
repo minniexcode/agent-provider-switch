@@ -1,5 +1,6 @@
 import { CliErrorShape } from "../domain/errors";
 import { isSecretKey, maskSecret } from "../domain/secrets";
+import type { TargetId } from "../domain/target";
 import { printErrorDetails } from "../storage/fs-utils";
 import { CommandResult } from "../app/types";
 import { CommandExecutionContext } from "../commands/types";
@@ -7,6 +8,15 @@ import { CommandExecutionContext } from "../commands/types";
 export type JsonEnvelope = {
   ok: boolean;
   command: string;
+  /**
+   * The target this invocation named, or `null` when no command resolved.
+   *
+   * Written on both the success and the failure path, which is what makes it readable without
+   * correlating `command` against an error code. That matters most for failures: before this
+   * field existed, the only signal that a failed `switch --claude` asked about Claude was the
+   * `CLAUDE_` prefix on its error code.
+   */
+  target: TargetId | null;
   data: Record<string, unknown> | null;
   warnings: string[];
   error: CliErrorShape | null;
@@ -27,6 +37,7 @@ export function renderSuccess(ctx: CommandExecutionContext, result: CommandResul
     const payload: JsonEnvelope = {
       ok: true,
       command: ctx.command,
+      target: ctx.target,
       data: result.data,
       warnings,
       error: null,
@@ -40,7 +51,7 @@ export function renderSuccess(ctx: CommandExecutionContext, result: CommandResul
   }
 
   return {
-    stdout: renderHumanSuccess(ctx.command, result.data, warnings),
+    stdout: renderHumanSuccess(ctx.target, ctx.command, result.data, warnings),
     stderr: [],
     exitCode: 0,
   };
@@ -54,6 +65,7 @@ export function renderFailure(ctx: CommandExecutionContext, error: CliErrorShape
     const payload: JsonEnvelope = {
       ok: false,
       command: ctx.command,
+      target: ctx.target,
       data: null,
       warnings: [],
       error,
@@ -75,12 +87,23 @@ export function renderFailure(ctx: CommandExecutionContext, error: CliErrorShape
 
 /**
  * Builds the plain-text success view for interactive terminal usage.
+ *
+ * The target is the resolved one rather than a payload field. The Claude services still write
+ * `target: "claude"` into their own `data` — that is a documented payload nobody here reads any
+ * more — and the moment this renderer stopped reading it, the field became removable without
+ * changing what a human sees. A spec pins the two equal for every Claude-capable command so the
+ * removal cannot quietly change which view is chosen.
  */
-function renderHumanSuccess(command: string, data: Record<string, unknown> | null, warnings: string[]): string[] {
+function renderHumanSuccess(
+  target: TargetId | null,
+  command: string,
+  data: Record<string, unknown> | null,
+  warnings: string[]
+): string[] {
   const lines: string[] = [];
 
-  if (data?.target === "claude") {
-    return renderClaudeHumanSuccess(command, data, warnings);
+  if (target === "claude") {
+    return renderClaudeHumanSuccess(command, data ?? {}, warnings);
   }
 
   switch (command) {

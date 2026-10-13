@@ -1,6 +1,6 @@
 # Testing
 
-Current version: `1.1.0`
+Current version: `1.1.1`
 
 There are two suites, and they cover different things on purpose.
 
@@ -49,10 +49,12 @@ npm pack --dry-run
 
 ## Required Coverage
 
-Focus on the dual-target contract, the `1.1.0` shared-defaults guarantees, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
+Focus on the dual-target contract, the `1.1.1` target-resolution guarantees, the `1.1.0` shared-defaults guarantees, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
 
-- Version metadata is `1.1.0` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
-- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.1.0.md` and `docs/Design/agent-provider-switch-v1.1.0-design.md`, and the PRD/Design pair exists for every version on the `0.3.1 → 1.1.0` line.
+- Version metadata is `1.1.1` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
+- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.1.1.md` and `docs/Design/agent-provider-switch-v1.1.1-design.md`, and the PRD/Design pair exists for every version on the `0.3.1 → 1.1.1` line.
+- Every command id has a declared target scope, and the accept/refuse matrix for `--claude`, `--codex`, and the pair holds for all of them.
+- The envelope carries a definite `target` on success and on failure, and a failure raised after resolution reports the resolved target rather than `null`.
 - The legacy tool home moves once, and only when `APS_HOME` is unset, the new home is absent, and the old lock has no live owner.
 - Help exposes only current commands: `init`, `migrate`, `list`, `show`, `current`, `status`, `config show`, `config list-profiles`, `config compact`, `add`, `edit`, `switch`, `remove`, `import`, `export`, `backups list`, `backups prune`, `unlock`, `rollback`, `doctor`, and deprecated `setup`.
 - Fresh provider flow: `init -> add -> switch -> status -> doctor`.

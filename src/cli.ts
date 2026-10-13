@@ -56,7 +56,9 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
     const json = argv.includes("--json");
     return emit(
       renderFailure(
-        { command: "help", options: { json, reveal: false, codexDir: null } },
+        // No command resolved, so there is no target to report. `null` is the definite answer the
+        // envelope field promises, which is why it is stated here rather than left to be absent.
+        { command: "help", target: null, options: { json, reveal: false, codexDir: null } },
         normalizeError(error)
       ),
       io
@@ -72,7 +74,7 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
     if (parsed.helpTarget && !isKnownCommandNameForHelp(parsed.helpTarget)) {
       return emit(
         renderFailure(
-          { command: "help", options: parsed.globalOptions },
+          { command: "help", target: null, options: parsed.globalOptions },
           normalizeError(
             cliError("INVALID_ARGUMENT", `Unknown help topic: ${parsed.helpTarget}`, {
               availableCommands: getKnownCommandNames(),
@@ -109,7 +111,7 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
     // this was indistinguishable from `--help` and both printed help with exit 0.
     return emit(
       renderFailure(
-        { command: "help", options: parsed.globalOptions },
+        { command: "help", target: null, options: parsed.globalOptions },
         normalizeError(
           cliError("INVALID_ARGUMENT", `Unknown command: ${unresolved}`, {
             availableCommands: getKnownCommandNames(),
@@ -123,6 +125,11 @@ export async function runCli(argv: string[], io: CliIo = processIo): Promise<num
   const ctx: CommandExecutionContext = {
     command: parsed.command,
     options: parsed.globalOptions,
+    // Stated rather than omitted because the field is required, and stated as `null` rather than
+    // guessed at because this context has not resolved a target yet: `executeCommand` assigns the
+    // real one before the handler runs. A context that never reaches dispatch keeps this value,
+    // which is the correct answer for it.
+    target: null,
   };
 
   try {
