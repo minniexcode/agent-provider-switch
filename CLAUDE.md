@@ -137,7 +137,9 @@ Pass 1 strips exactly three tokens by exact equality: `--json`, `--reveal`, `--c
 5. Add `docs/PRD/agent-provider-switch-prd-v<version>.md` and `docs/Design/agent-provider-switch-v<version>-design.md`. Every release carries both.
 6. `npm run build && npx tsc --noEmit && node tests/run-tests.js`.
 
-`docs/agent-provider-switch-product-overview.md` and `docs/agent-provider-switch-technical-architecture.md` deliberately lag a version or two; the contract test's version regex tolerates that. `docs/agent-provider-switch-2.x-roadmap.md` is the source of record for outstanding findings — cite its IDs (e.g. P1-9) in comments and commits.
+`docs/agent-provider-switch-product-overview.md` and `docs/agent-provider-switch-technical-architecture.md` deliberately lag a version or two; the contract test's version regex tolerates that. Roadmaps are not version-tracked and are not wired into the contract test.
+
+`docs/agent-provider-switch-1.x-roadmap.md` is the live decision document — read it before planning anything. `docs/agent-provider-switch-2.x-roadmap.md` is superseded for planning but its §2 remains the **source of record for finding IDs** (`P0-*` / `P1-*` / `P2-*`): cite those IDs (e.g. P1-9) in comments and commits, and never renumber them.
 
 ## Style
 

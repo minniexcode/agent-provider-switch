@@ -1,6 +1,28 @@
 # agent-provider-switch 2.x Roadmap
 
-A review of `@minniexcode/agent-provider-switch` as of `0.3.1`, plus a phased plan for the 0.3.x → 0.4.x line.
+A review of `@minniexcode/agent-provider-switch` as of `0.3.1`, plus a phased plan for the `0.3.x` →
+`0.4.x` line.
+
+> ### Superseded for planning; retained as a review
+>
+> The **plan** half of this document — §3, §4, and §5 — was replaced by
+> [`docs/agent-provider-switch-1.x-roadmap.md`](./agent-provider-switch-1.x-roadmap.md) once a third
+> target was confirmed. Two judgements here were wrong, and both are corrected there:
+>
+> - **§4 rejected a generic target abstraction, and rejected `--target`.** That rejection rested on
+>   the tool staying a two-target tool. It is not staying one. The abstraction is now `1.2.0`, and
+>   `--target <id>` is adopted *in addition to* the existing `--claude` / `--codex` aliases. What
+>   remains rejected is `--target` **replacing** them.
+> - **The version framing never matched the project.** This file is named for a `2.x` line and opens
+>   by planning `0.3.x` → `0.4.x`. There is no `2.x`.
+>
+> **§2 is explicitly *not* superseded, and the identifiers are not renumbered.** §2 remains the
+> source those IDs are cited from, exactly as the paragraph below requires. The headings keep their
+> existing numbers. §1 is a dated snapshot of `0.3.1`: read it as history, not as current state.
+>
+> **What of §3 remains is tracked in the `1.x` roadmap's §6**, "Still open from the `0.3.x`
+> inventory", which re-verifies each surviving item against the tree at `1.1.0`. §5's decisions are
+> carried forward there in §7.
 
 This is a **decision document**, not a fact source. It is deliberately not wired into the version
 assertions in `tests/release-contract.spec.js`.
@@ -398,6 +420,12 @@ listed in §1.
 
 ## 3. Roadmap
 
+> **Superseded.** Phases 1, 2a, and 2b shipped as `0.3.1`, `0.4.0`, and `0.4.1`. Phases 3 and 4 never
+> became a release under this plan; what of them is still open is re-verified at `1.1.0` in
+> [`agent-provider-switch-1.x-roadmap.md`](./agent-provider-switch-1.x-roadmap.md) §6. The phase
+> descriptions are kept as the record of what each release was scoped to do, including the items a
+> Design document later overrode — where the two disagree, the Design is the settled record.
+
 Ordered so that each phase is independently shippable and reviewable.
 
 ### Phase 1 — `0.3.1` Security patch
@@ -600,17 +628,35 @@ correctness problem is its silence, not its coverage.
 
 ## 4. Explicitly Rejected
 
+> **Three rows are superseded; two stand.** The rows are kept as written, with an inline marker on
+> the ones that moved. The reasoning in all three rested on a premise — the tool has two targets and
+> will keep two — that is no longer true.
+>
+> **The first row is split by the correction.** "A generic target abstraction" is now `1.2.0`.
+> "Merging into one `providers.json`" is still rejected, and for a stronger reason than the one
+> given here: the two records are structurally different (a flat record against a settings blob), so
+> a merged file needs a union type that makes every reader narrower rather than simpler.
+
 | Not doing | Why |
 |---|---|
-| A generic "target" abstraction, or merging into one `providers.json` | Already a written non-goal in the 0.3.0 PRD and Design. The Claude path is ~700 lines; the payoff does not justify a storage-format migration. Confirmed as the direction for this cycle. |
-| Re-introducing copilot-sdk, the HTTP bridge, or the proxy runtime | Removed deliberately in 0.2.1. `package-lock.json` is clean. No reason to regress. |
-| Unifying the Codex and Claude domain/storage/app layers behind a shared `ProviderRegistry<T>` | ~300–350 lines of the ~500 structural repetition would collapse, but it trades the clarity of two independent targets for indirection — and contradicts the decision above. Phase 3 removes the dead code instead. |
-| A `--target` flag replacing `--claude` | Same reasoning. `--claude` is already documented and shipped. |
-| Adding an exit-code taxonomy (2 for usage errors, etc.) | Phase 2 only needs "success vs. failure" to be correct. A taxonomy is a behaviour change with no current consumer. |
+| ~~A generic "target" abstraction~~, or merging into one `providers.json` | **Half superseded.** The abstraction is accepted — `1.2.0`. The merged registry is still rejected. The stated reason ("the Claude path is ~700 lines") weighed the cost of the abstraction against two targets; with a third target the comparison is against writing a third copy of six parallel layers. |
+| Re-introducing copilot-sdk, the HTTP bridge, or the proxy runtime | Removed deliberately in 0.2.1. `package-lock.json` is clean. No reason to regress. **Stands.** |
+| ~~Unifying the Codex and Claude domain/storage/app layers behind a shared `ProviderRegistry<T>`~~ | **Superseded — accepted.** This is `1.2.0`'s core. The one condition carried forward: both stored file formats stay exactly as they are, so the unification is of the code, not the data. Phase 3's dead-code removal is sequenced *first* inside `1.2.0`, for the reason given there — a tree with two names per module makes the real refactor harder to review. |
+| ~~A `--target` flag replacing `--claude`~~ | **Narrowed, not overturned.** *Replacing* is still rejected: the aliases are shipped and documented. *Adding* `--target <id>` alongside them is adopted in `1.2.0`, because N boolean flags make the conflict check pairwise and then quadratic. |
+| Adding an exit-code taxonomy (2 for usage errors, etc.) | Phase 2 only needs "success vs. failure" to be correct. A taxonomy is a behaviour change with no current consumer. **Stands.** |
 
 ---
 
 ## 5. Decisions and Open Questions
+
+> **Superseded as a live list; every decision here is carried forward.** The three decisions below
+> are all still in force and are restated in
+> [`agent-provider-switch-1.x-roadmap.md`](./agent-provider-switch-1.x-roadmap.md) §7, alongside the
+> ones that changed. Two of them have since acquired their own consumers: `show --json` emitting the
+> full `apiKey` is now the one contract `1.1.2`'s rename deliberately does not touch, and automatic
+> backup retention is why `1.1.3` refuses `--claude` on `backups prune` — retention is one policy
+> over a shared directory, not a per-target setting. No new questions should be opened here; the
+> `1.x` roadmap is the live document.
 
 **Decided — Codex `show --json` keeps emitting the full `apiKey`.** It is documented as an
 automation contract (`src/commands/registry.ts:103-106`) and is left unchanged. Phase 1 masks only
