@@ -78,7 +78,7 @@ src/interaction/        Interactive prompts (inquirer-based)
 src/runtime/            Codex CLI detection/probing
 ```
 
-`src/cli.ts` imports `commands/dispatch` **dynamically**, so `--help`, `--version`, and flag errors never load `inquirer` or the command services. `runCli(argv, io)` is the whole entry ladder — it takes line-oriented `{ stdout, stderr }` sinks and returns an exit code instead of calling `process.exit`. Tests call `runCli` directly through `runBuiltCli()`, so the dispatch ladder has exactly one implementation: there is no in-process mirror to keep in sync, and a change to `src/cli.ts` is immediately visible to the suite.
+`src/cli.ts` imports `commands/dispatch` **dynamically**, and help/version finish before dispatch executes. The current `commands/registry.ts` still imports handlers statically, so that entry-level dynamic import alone does not prevent transitive loading of command services and prompts. The [1.2.0 Design](docs/Design/agent-provider-switch-v1.2.0-design.md) separates lightweight declarations from handler loading to establish that boundary. `runCli(argv, io)` is the whole entry ladder — it takes line-oriented `{ stdout, stderr }` sinks and returns an exit code instead of calling `process.exit`. Tests call `runCli` directly through `runBuiltCli()`, so the dispatch ladder has exactly one implementation: there is no in-process mirror to keep in sync, and a change to `src/cli.ts` is immediately visible to the suite.
 
 Output rendering is pure: `renderSuccess` / `renderFailure` in `src/cli/output.ts` return `{ stdout, stderr, exitCode }` and never write. Never add a `process.exit` to the library path — `src/cli.ts` sets `process.exitCode` after the promise settles, because exiting right after a write to a POSIX pipe can truncate stdout.
 
@@ -89,11 +89,13 @@ The CLI manages two independent targets via the same tool-home (`~/.config/agent
 - **Codex** (default): `providers.json` → projected into `~/.codex/config.toml` + `auth.json`
 - **Claude Code** (`--claude` flag): `claude-providers.json` → atomic replacement of `~/.claude/settings.json`
 
-`isClaudeCommand(command, commandOptions)` gates a fixed set (`add`, `switch`, `list`, `show`, `current`, `remove`). `handleRegisteredCommand()` checks it first and early-returns to `handleClaudeCommand()` **before** the `ctx.options.codexDir` null check, so Claude commands work with no Codex directory configured. All commands share one registry — there is no separate Claude command table.
+`src/domain/target.ts` declares each command's scope. `isClaudeCommand(command, commandOptions)` delegates to that scope: the six switchable provider verbs route to Claude when selected, and `config compact` always reaches the Claude handler, which requires an explicit Claude flag. `doctor`, `status`, and `backups list` compose reports across the selected targets rather than taking the Claude early-return. `handleRegisteredCommand()` performs that early-return before the Codex directory guard, so Claude provider commands work without a configured Codex directory.
+
+This describes the current `1.1.3` implementation. The confirmed `1.2.0` plan shares provider workflows, registry I/O, interaction, and report composition through target descriptors and adapters; native settings, defaults, matching, and presentation policies remain target-specific. Read roadmap §4 and [ADR-0001](docs/adr/0001-share-provider-workflows-through-target-adapters.md) before designing the refactor. Keep the current stored formats for this cycle; different schemas do not make combined storage technically impossible.
 
 ### Tool-Home Migration
 
-`ensureLegacyToolHomeMigrated()` runs once at the top of `executeCommand` — the single funnel every command passes through, so one call site covers both targets, `unlock` included. It runs *before* the tool-home paths are built, because those resolve to the new home.
+`ensureLegacyToolHomeMigrated()` runs once in `executeCommand`, after flag/scope validation and before the tool-home paths are built. The one call site covers both targets, `unlock` included; the paths must be built after migration because they resolve to the new home.
 
 It moves the pre-`1.0.0` tool home to the current one only when **all** of these hold: `APS_HOME` is unset (checked before any filesystem call — the one thing standing between a bug here and the developer's real `~/.config`), the new home does not exist, the old one is a directory, and the old lock has no live or foreign owner. Both homes existing is a silent no-op: with no one-shot state marker, a warning there would fire on every command forever.
 
@@ -114,17 +116,15 @@ Two different contracts, deliberately:
 
 ### Mutation Safety
 
-All write commands go through `runMutation()` which: acquires a file lock, snapshots affected files into `backups/`, executes the mutation, and auto-restores on failure. Both Codex and Claude operations share the same lock file.
+Managed provider and configuration writes go through `runMutation()`: acquire the shared lock, snapshot affected files, apply the change, and restore on failure. Recovery and pruning use their own shared-lock workflows; export writes an external file atomically without changing the managed registry. Both targets share one lock. In `1.2.0`, the common workflow owns the mutation wrapper; target adapters supply affected files and changes without nesting another `runMutation()`.
 
 Rollback is contained: `restoreManifest(manifest, allowedRoots)` requires an allowlist **built by the caller**, never read from the manifest — a root recorded inside the manifest would be tamperable by the same edit that redirects a restore path. Every restore path must resolve inside a root or it throws `ROLLBACK_PATH_REJECTED`. The parameter is required, not optional, so a new call site cannot silently skip the check. Both targets share one `backups/` dir and one `latest.json`, so the Codex rollback handler passes the Claude directory as a third root.
 
-### Arg Parsing Quirk
+### Argument Parsing and Target Selection
 
-The arg parser (`src/commands/args.ts`) treats any `--flag nextToken` as `flag=nextToken` unless `nextToken` starts with `--`. So `aps add --claude myname` assigns `"myname"` as the value of `--claude`. `resolveClaudeProviderName()` in `claude-handlers.ts` normalizes this by checking both positionals and the `--claude` flag value.
+`parseArgs()` first extracts `--json`, `--reveal`, `--codex-dir`, and the declared boolean flags, including `--claude` and `--codex`, before resolving command tokens. Booleans do not consume the following provider name, so `aps add --claude myname` and prefix target flags are supported. The old `resolveClaudeProviderName()` workaround is gone. Help/version are detected by scanning the remaining tokens.
 
-`--reveal` sidesteps the quirk by being registered as a **global** flag: `parseArgs()`'s first pass matches tokens by exact equality, so it is stripped before the greedy second pass can swallow a provider name. Without this, `aps show --reveal deepseek` would eat `deepseek`. Fixing the parser itself is Phase 2 (roadmap P1-1) — new boolean flags should be global until then.
-
-Pass 1 strips exactly three tokens by exact equality: `--json`, `--reveal`, `--codex-dir`. `--version`/`-v` and `--help` are not stripped there — they are detected afterwards by scanning the leftover tokens, so they must appear where the command-option pass will not consume them as a value.
+Other valued command options are parsed after command resolution. The planned `--target <id>` must be extracted before resolution to support both prefix and suffix forms; all later guards and handlers must use its normalized target together with the aliases. Same-target duplicates are accepted, different-target selections are refused, and missing/unknown ids report `INVALID_ARGUMENT`. These rules are planned for `1.2.0`; the current binary still accepts the two aliases only.
 
 ## Version Bumps and Releases
 
@@ -137,7 +137,7 @@ Pass 1 strips exactly three tokens by exact equality: `--json`, `--reveal`, `--c
 5. Add `docs/PRD/agent-provider-switch-prd-v<version>.md` and `docs/Design/agent-provider-switch-v<version>-design.md`. Every release carries both.
 6. `npm run build && npx tsc --noEmit && node tests/run-tests.js`.
 
-`docs/agent-provider-switch-product-overview.md` and `docs/agent-provider-switch-technical-architecture.md` deliberately lag a version or two; the contract test's version regex tolerates that. Roadmaps are not version-tracked and are not wired into the contract test.
+Keep the product overview and technical architecture's current fact sources aligned with the released version, and label planned behavior separately. The contract test's broad version regex does not prove those documents are current. Roadmaps describe decisions rather than released functionality and are not version-tracked by the contract test.
 
 `docs/agent-provider-switch-1.x-roadmap.md` is the live decision document — read it before planning anything. `docs/agent-provider-switch-2.x-roadmap.md` is superseded for planning but its §2 remains the **source of record for finding IDs** (`P0-*` / `P1-*` / `P2-*`): cite those IDs (e.g. P1-9) in comments and commits, and never renumber them.
 

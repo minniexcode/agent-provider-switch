@@ -12,6 +12,10 @@ _Avoid_: Provider, backend
 A named choice of service connection and settings available for a target. A provider belongs to one target.
 _Avoid_: Target, agent tool
 
+**Provider name**:
+A name that identifies a provider within its target. The same name can identify independent providers for different targets.
+_Avoid_: Global provider identity, target
+
 **Provider registry**:
 The collection of provider records saved for a target. An empty registry is distinct from a provider with an unknown name.
 _Avoid_: Active settings, provider
@@ -43,6 +47,10 @@ _Avoid_: Provider export
 **Command scope**:
 The targets accepted for a command to operate on or report about. Shared operations have no target scope. Scope is distinct from the effects of recovering a particular backup.
 _Avoid_: Backup origin, restore impact
+
+**Target capability**:
+An operation or configuration behavior supported by a target. Capability describes what the target supports; command scope describes which targets a command can cover.
+_Avoid_: Command scope, target selection
 
 **Backup origin**:
 The target or targets associated with the operation that produced a backup. Origin describes the backup's provenance rather than everything its recovery affects.

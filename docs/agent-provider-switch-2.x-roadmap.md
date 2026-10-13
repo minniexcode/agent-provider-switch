@@ -633,24 +633,25 @@ correctness problem is its silence, not its coverage.
 > will keep two — that is no longer true.
 >
 > **The first row is split by the correction.** "A generic target abstraction" is now `1.2.0`.
-> "Merging into one `providers.json`" is still rejected, and for a stronger reason than the one
-> given here: the two records are structurally different (a flat record against a settings blob), so
-> a merged file needs a union type that makes every reader narrower rather than simpler.
+> "Merging into one `providers.json`" is outside the confirmed `1.2.0` refactor's scope. The current
+> review corrects the earlier rationale: differing records and a union type do not prohibit shared
+> storage. Common code can be unified without also choosing migration, cross-target name identity,
+> or whole-file recovery semantics. See the live roadmap §4 and ADR-0001.
 >
 > **The `1.1.x` line narrows two of these rows further, without overturning them.** `1.1.1` made the
 > target explicit (`--codex` names the default, the pair is refused, the envelope carries one), and
 > `1.1.3` made it a *scope* declared per command — one table in `src/domain/target.ts`, and three
 > commands that report on both targets at once. That is the `1.2.0` abstraction's first half arrived
 > early, on the terms this section set: the *scope* is shared, the per-target code paths are not, and
-> both stored file formats are untouched. A `--target <id>` flag is still rejected for this line; it
-> is `1.2.0`'s, because until the flags stop being booleans there is nothing for it to replace.
+> both stored file formats are untouched. `--target <id>` belongs to `1.2.0`; it is a general selection
+> interface alongside the existing boolean aliases rather than a replacement for them.
 
 | Not doing | Why |
 |---|---|
-| ~~A generic "target" abstraction~~, or merging into one `providers.json` | **Half superseded.** The abstraction is accepted — `1.2.0`. The merged registry is still rejected. The stated reason ("the Claude path is ~700 lines") weighed the cost of the abstraction against two targets; with a third target the comparison is against writing a third copy of six parallel layers. |
+| ~~A generic "target" abstraction~~, or merging into one `providers.json` | **Half superseded.** The abstraction is accepted in `1.2.0`; storage migration is outside that cycle's scope, not technically blocked by record differences. The historical "~700 lines" reason compared against only two targets. |
 | Re-introducing copilot-sdk, the HTTP bridge, or the proxy runtime | Removed deliberately in 0.2.1. `package-lock.json` is clean. No reason to regress. **Stands.** |
-| ~~Unifying the Codex and Claude domain/storage/app layers behind a shared `ProviderRegistry<T>`~~ | **Superseded — accepted.** This is `1.2.0`'s core. The one condition carried forward: both stored file formats stay exactly as they are, so the unification is of the code, not the data. Phase 3's dead-code removal is sequenced *first* inside `1.2.0`, for the reason given there — a tree with two names per module makes the real refactor harder to review. |
-| ~~A `--target` flag replacing `--claude`~~ | **Narrowed, not overturned.** *Replacing* is still rejected: the aliases are shipped and documented. *Adding* `--target <id>` alongside them is adopted in `1.2.0`, because N boolean flags make the conflict check pairwise and then quadratic. |
+| ~~Unifying the Codex and Claude domain/storage/app layers behind a shared `ProviderRegistry<T>`~~ | **Superseded — accepted.** `1.2.0` shares workflows and registry I/O through target adapters, retains formats for this cycle, and first removes only code verified unused in the current tree. |
+| ~~A `--target` flag replacing `--claude`~~ | **Narrowed, not overturned.** Replacing the aliases remains outside the plan; adding `--target <id>` is adopted as the general selection interface. Alias conflicts can already be detected linearly by collecting distinct ids. |
 | Adding an exit-code taxonomy (2 for usage errors, etc.) | Phase 2 only needs "success vs. failure" to be correct. A taxonomy is a behaviour change with no current consumer. **Stands.** |
 
 ---

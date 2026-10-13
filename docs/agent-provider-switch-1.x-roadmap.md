@@ -1,6 +1,7 @@
 # agent-provider-switch 1.x Roadmap
 
-A decision document for the `1.1.x` → `1.3.0` line, written against the tree at `1.1.0`.
+A decision document for the `1.1.x` → `1.3.0` line. The original inventory was written against
+`1.1.0`; §4 was reviewed against the accepted `1.1.3` implementation on 2026-10-13.
 
 It **supersedes the plan half** of `docs/agent-provider-switch-2.x-roadmap.md`. That file's §2 issue
 inventory is still the ID source for `P0-*` / `P1-*` / `P2-*` citations and is not restated here; its
@@ -9,7 +10,8 @@ inventory is still the ID source for `P0-*` / `P1-*` / `P2-*` citations and is n
 This is **a decision document, not a fact source**, on the same terms as the file it supersedes. It
 is deliberately not wired into the version assertions in `tests/release-contract.spec.js`.
 
-Every claim about the working tree below cites a file or a symbol and was verified against `1.1.0`.
+Historical observations in §2 were verified against `1.1.0`. The confirmed `1.2.0` rules and
+their current-code evidence are recorded in [the 1.2.0 review](Reviews/agent-provider-switch-1.2.0-prd-review.md).
 
 ---
 
@@ -53,8 +55,9 @@ one `backups/` directory and one `latest.json` shared between them.
 | Projection | `config.toml` (byte-offset patch) + `auth.json`, two files | `settings.json`, one whole-file atomic replace |
 | File root shape | `{ providers: { … } }` | `{ providers: { … } }` |
 
-The root shapes are already identical. The records are not, and cannot be made so without inventing
-a union — which is why §8 rejects unifying them.
+The root shapes are already identical. The records differ, but that does not prevent shared
+registry code or combined storage: a discriminator or target-specific codec can preserve both
+shapes. §4 retains the separate files as a scope choice for this refactor.
 
 **"Which target" is answered three times, by convention.** `isClaudeCommand()` returns a boolean;
 each Claude service hand-writes `target: "claude"` into its own payload; each Claude mutation encodes
@@ -73,8 +76,8 @@ it again as the `claude-` prefix on its operation name, which reaches `backups/`
 **The suite is trustworthy now.** CI runs on Linux and Windows against Node 20 and 22
 (`.github/workflows/ci.yml`), the `dev-codex/local-sandbox` fixture dependency is gone, and the
 harness drives `runCli()` in-process rather than mirroring it. That is what makes a refactor of this
-size reviewable: `1.2.0` can assert "every existing spec passes unmodified", which was not true at
-`0.3.1`.
+size reviewable: `1.2.0` can preserve the existing behavior assertions while updating module
+paths, test wiring, and version assertions as needed, which was not possible at `0.3.1`.
 
 ## 3. The `1.1.x` line
 
@@ -106,68 +109,139 @@ explicit. Contract changes require corresponding regression assertions in the su
 
 ## 4. `1.2.0` — the target descriptor
 
-**Goal.** Replace "one parallel code path per target" with "one descriptor table plus one executor",
-without changing the CLI surface, the JSON contract, or either stored file format.
+**Goal and baseline.** Replace parallel target implementations with a descriptor table, shared
+command workflows, and target adapters. Add `--target <id>` alongside the existing aliases.
+Preserve the accepted `1.1.3` normal operation semantics, JSON fields and meanings, and both stored
+formats. This is a scope choice for the author's single-user tool, not an external compatibility
+promise. The [1.1.x acceptance](Reviews/agent-provider-switch-1.1.x-implementation-verification.md)
+stands; its deferred boundary improvements are not prerequisites for this refactor.
 
-**What a descriptor declares.** The list is the deliverable; its exact TypeScript shape is `1.2.0`'s
-Design document's job.
+**The shared workflow and the target adapter have different jobs.** Each of `add`, `list`, `show`,
+`current`, `switch`, and `remove` has one common implementation. The common layer owns dispatch,
+registry access, provider lookup, selection and confirmation, and mutation orchestration. The
+adapter supplies target-specific input, record rules, effective settings, matching, summaries,
+operation policies, configuration change plans, and presentation. A descriptor that simply calls
+one of the old complete command handlers does not satisfy this goal.
 
-- Identity: `id`, label, tool-home environment variable, default target directory, registry file name.
-- Record schema: parse, validate, serialize — with validation messages that name the target.
-- **Secret location**: which part of the record holds the credential, and therefore what `show`
-  masks and `--reveal` reveals.
-- **Projection**: how a record becomes the target's real configuration (one file or several, atomic
-  replace or byte-offset patch) and how the active provider is read back out of it.
-- **Optional shared layer**: whether the target supports a defaults block, and how a stored delta is
-  resolved against it. Codex has none; Claude has `claudeDefaults`.
-- Capability: which verbs apply, i.e. `1.1.3`'s scope table.
+For example, Codex `add` prepares TOML configuration while Claude `add` stores a settings record;
+Codex `remove` protects the unique active route and supports `--switch-to`, while Claude `remove`
+only deletes its registry record. The shared workflow preserves those differences through adapter
+policies rather than duplicating the entire command. One implementation per workflow does not
+require all source code to live in one physical file.
 
-**What it collapses.** The six file pairs in §2 become one implementation each, parameterized by
-descriptor. `doctor`, `status`, and `backups list` stop naming two targets explicitly and iterate the
-table instead. The interactive selectors (`promptForProviderSelection` and
-`promptForClaudeProviderSelection`, which re-implements it) become one.
+**What a descriptor and its adapter declare.** The exact TypeScript interfaces belong in the Design:
 
-**`--target <id>` is added, and `--claude` / `--codex` stay.** Two booleans do not generalize: with a
-third target the conflict matrix is pairwise and a fourth makes it quadratic. `--target` is the
-general form, the existing booleans remain as aliases, and this is additive — the change to `0.3.x`'s
-rejection is that *replacing* the aliases is still rejected while *adding* the general form is
-adopted. `1.1.3`'s scope table already gives the new flag its per-command acceptance rule.
+- Identity and paths: `id`, label, target-directory environment variable and resolution policy,
+  registry filename, managed runtime files, and artifact ownership. `APS_HOME` is the one shared
+  tool home; `APS_CODEX_DIR` and `APS_CLAUDE_DIR` identify target runtime roots.
+- Record codec: parse, validate, and serialize with target-appropriate messages. Common registry
+  code handles collections; codecs preserve the different record schemas.
+- Effective settings: optional target defaults and resolution of stored settings. Claude stored
+  deltas remain raw in the registry; resolved settings are used for projection and read views.
+- Matching and summaries: how active settings relate to saved providers and how choices are shown.
+- Operation policies and projection: target-specific preconditions, affected-file lists, and plans
+  for native configuration writes. Codex uses TOML patching and auth projection; Claude replaces
+  settings.json with effective settings.
+- Presentation and secrets: target-specific JSON and human views, including masking and reveal
+  behavior. A single secret field path is insufficient to describe the existing show contracts.
+- Capabilities and diagnostics: supported operations, report sections, and optional extra checks.
+  Codex CLI probing is a Codex capability, not a requirement imposed on every target.
 
-**Non-goals.** No storage-format change. No merging of `providers.json` and
-`claude-providers.json`. No third target. No CLI break — the commands, flags, and JSON stay as
-`1.1.3` left them, which is what makes this a `1.2.0` rather than a `2.0.0`.
+**Scope is a command policy; capability is a target policy.** A command declares how it selects
+targets, its default scope, and whether an explicit selection is required. A target declares the
+operations it implements. Guards, dispatch, help, and report selection consume these declarations
+instead of keeping separate target lists. Keep the current 21 commands' supported behavior:
 
-**Design against the two targets that exist.** Codex is the flat-record, two-file-projection,
-field-secret extreme; Claude is the blob-record, shared-defaults, nested-secret, whole-file-replace
-extreme. Those two are the design pressure. Guessing at a third target's shape before it is chosen
-would produce an abstraction fitted to a hypothesis, and the whole point is that the third target
-should cost one file.
+| Command class | Bare invocation | Explicit target |
+|---|---|---|
+| Six common provider verbs | Codex | Codex or Claude |
+| Codex-only commands | Codex | Codex accepted; Claude refused |
+| `config compact` | Requires explicit Claude selection | Claude accepted; Codex refused |
+| `doctor`, `status`, `backups list` | Both targets | Narrows to the selected target |
+| `backups prune`, `rollback`, `unlock` | Shared operation | All target selectors refused |
 
-**State of this release's documentation.** Direction settled here; its PRD and Design are not
-written. They are the next documents this line needs, and they should be written before any `1.2.0`
-code, on the same terms as `1.1.x`: the Design judges `1.2.0` by whether every existing spec passes
-unmodified.
+Common code does not automatically give Claude `edit`, `import`, or `export` support.
+
+**Normalize selectors once.** `--target codex` equals `--codex`; `--target claude` equals
+`--claude`. The valued flag works before or after command tokens without swallowing provider
+positionals. Multiple selectors for the same target are deduplicated; different targets are
+refused. Missing values and unknown ids use `INVALID_ARGUMENT`; repeated `--target` values follow
+the same rule rather than silently choosing the last. All guards and handlers use the normalized
+selection, including `--full`, `config compact --dry-run`, and the existing target-directory rules.
+`--target` provides a general selection interface; alias conflict detection itself can already be
+linear by collecting distinct selected ids.
+
+**Apply the abstraction across the call chain.** `doctor` and `status` compose reports by iterating
+selected descriptors; `backups list` uses declared roots and artifact ownership. Target presenters
+supply target sections, and a target out of scope is not read or probed. Common interactive
+selection and confirmation use the existing injectable prompt runtime; target adapters supply
+input fields, labels, and matching information. Historical backup-name classification remains a
+centralized compatibility rule, distinct from current descriptor-driven ownership.
+
+**One mutation boundary.** The common workflow invokes the existing `runMutation()` once for the
+adapter's affected-file list and change plan. Adapter writes do not nest another mutation wrapper.
+Keep one tool home, lock, backups directory, latest pointer, and retention policy. Common storage
+writes raw records; it never expands Claude defaults into surviving records during another write.
+
+**Storage is outside this refactor's migration scope.** Retain `providers.json` and
+`claude-providers.json`, their schemas, and target-local provider names. Combining them is
+technically possible with a discriminator or target partitions, but would introduce independent
+choices about `(target, name)` identity, import/export scope, whole-file recovery, and migration.
+Different record shapes or the need for a union are not technical reasons that prohibit it.
+
+**Design against the two current targets.** Preserve their actual native configuration differences
+without inventing a universal settings schema. No third production target is implemented in
+`1.2.0`. Its extension boundary is adding a descriptor, target adapters, registrations/types as
+needed, and tests; common workflows, selection, report composition, and presentation dispatch
+must not gain another target-specific branch. File count is not an acceptance criterion.
+
+**Acceptance.** Both targets use the same six common workflows; selectors and aliases are
+equivalent across provider commands and report filtering, including these normal invocations:
+
+```text
+aps --target claude list
+aps list --target claude
+aps add p --target claude --from-file settings.json --full
+aps config compact --target claude --dry-run
+aps doctor --target claude --json
+```
+
+Preserve normal operation and JSON behavior assertions, shared-command scope, existing backup
+reading, defaults/delta behavior, and one mutation boundary. Add selector and common-interaction
+coverage; allow test imports, module paths, wiring, and version assertions to change with the
+refactor. Run type checking, the in-process suite, and E2E. Review the extension boundary without
+requiring a fabricated third target or reopening the deferred 1.1.x defensive backlog.
+
+**Documentation state.** These rules were confirmed through
+[the global review](Reviews/agent-provider-switch-1.2.0-prd-review.md) and recorded in
+[ADR-0001](adr/0001-share-provider-workflows-through-target-adapters.md). The
+[formal 1.2.0 PRD](PRD/agent-provider-switch-prd-v1.2.0.md) and
+[Technical Design](Design/agent-provider-switch-v1.2.0-design.md) now define the requirements,
+adapter contracts, implementation order, and acceptance cases. Documentation is complete;
+implementation remains planned. Current-version fact sources must describe `1.1.3`; planned
+descriptor behavior must remain identified as future work.
 
 ## 5. `1.3.0` — the third target
 
 **Not scheduled.** A third target is certain, and it is not now: `1.2.0` has to land first, or the
 third target pays for the abstraction twice.
 
-Once `1.2.0` is in, a new target should cost a descriptor, a projection implementation, its rows in
-the capability table, and its own tests — and nothing else. If it costs more than that, `1.2.0` was
-designed against the wrong two targets and the honest response is to fix the abstraction before
-adding the target.
+Once `1.2.0` is in, a new target should add a descriptor, its adapters and capabilities, the necessary
+registration/type and documentation updates, and its tests. It should not copy shared provider
+workflows or add target branches to common selectors, report composition, or presentation
+dispatch. A new product capability can require a new common operation; that is different from
+duplicating an existing operation for another target.
 
 ## 6. Still open from the `0.3.x` inventory
 
-Verified at `1.1.0`. Anything not listed here is either closed by a shipped release or was not
-re-verified for this document.
+The inventory was verified at `1.1.0`; P2-3 was corrected during the `1.2.0` review. Other rows remain
+historical observations unless stated otherwise. Recheck current callers before any deletion.
 
 | Finding | State |
 |---|---|
 | **P2-1** dead layers | Open. `src/infra/` (8 files) is still present and still imported by nothing; 5 of the 6 files in `src/cli/` are still dead shims, with `output.ts` the only live one. |
 | **P2-2** dead exports | Open. `findProviderByProfile`, `confirmCreateCodexDir`, `planProfileLifecycleOutcome`, and `DEFAULT_LINE_ENDING` still have no callers; `DESTRUCTIVE_REMOVE_BLOCKED` is still declared and only ever rendered. |
-| **P2-3** copilot-era remnants | Open. `runCodexLogin()`, `setCodexSpawnImplementation()`, and `resetCodexSpawnImplementation()` in `src/runtime/codex-cli.ts` are referenced only by the dead `src/infra/codex-cli.ts` shim. |
+| **P2-3** copilot-era remnants | `runCodexLogin()` is still referenced only by the dead shim. The spawn setter/resetter are used by `tests/doctor-targets.spec.js` and must stay. The runtime probe also still produces `CODEX_LOGIN_FAILED`; an old integration label alone is not a reason to delete a live producer. |
 | **P2-5** the hand-rolled TOML parser | Open, recommendation unchanged: make it **fail loudly** rather than swap in a real parser. Its problem is silence, not coverage. |
 | **P2-7** help and flag inconsistencies | Partly closed. Boolean flags stopped swallowing the next token in `0.4.0`, and the top-level banner names both targets as of `1.1.0`; the remaining inconsistencies stand. |
 | **P2-11** packaging | Open. `engines.node` is still `>=18` while the sole runtime dependency requires `>=20.12`; `files` ships the whole `docs/` tree while excluding `README.CN.md` and `README.AI.md`; there is no `types` field; and `git tag` still returns nothing. |
@@ -179,6 +253,9 @@ removes the "two names for every module" problem that makes a refactor of `1.2.0
 follow. They belong in `1.2.0` rather than in a later cleanup release, and the `1.2.0` Design should
 sequence them first so the real refactor lands on a tree with one name per module.
 
+The cleanup is limited to code confirmed unused in the current tree. Keep test injection points
+and live diagnostic behavior; the historical inventory is not a deletion manifest.
+
 The rest are independent and can land in any minor release.
 
 ## 7. Decisions carried over, changed, or dropped
@@ -186,10 +263,10 @@ The rest are independent and can land in any minor release.
 | Decision | `0.3.x` | Now |
 |---|---|---|
 | A generic target abstraction | Rejected | **Accepted.** `1.2.0`. The rejection rested on a two-target assumption that is no longer true. |
-| Unifying the domain/storage/app layers behind a shared registry | Rejected as "trading clarity for indirection" | **Accepted**, as `1.2.0`'s core, with the condition that both stored formats are unchanged. |
+| Sharing provider workflows and registry I/O through target adapters | Rejected as "trading clarity for indirection" | **Accepted**, as `1.2.0`'s core. Keep target-specific schemas and rules; stored formats are retained for this cycle's scope. |
 | A `--target` flag **replacing** `--claude` | Rejected | Still rejected. |
 | Adding `--target <id>` **alongside** the existing aliases | Not considered | **Accepted**, `1.2.0`. |
-| Merging both registries into one `providers.json` | Rejected | Still rejected. The records are structurally different; a merged file needs a union type. |
+| Merging both registries into one `providers.json` | Rejected | Outside `1.2.0`'s confirmed scope. Technically possible; storage migration is a separate choice, not blocked by differing record shapes. |
 | Re-introducing the copilot-sdk, HTTP bridge, or proxy runtime | Rejected | Still rejected. |
 | An exit-code taxonomy beyond `0` / `1` | Rejected, no consumer | Still rejected. |
 | Codex `show --json` emitting the full `apiKey` | Decided: keep, it is a documented automation contract | Unchanged. The reviewed `1.1.x` changes do not alter this show/export contract. |
@@ -200,8 +277,8 @@ The rest are independent and can land in any minor release.
 
 | Not doing | Why |
 |---|---|
-| Merging `providers.json` and `claude-providers.json` | The root shapes match and the records do not. A merged file needs a union of a flat record and a settings blob, which makes every reader narrower instead of simpler. |
-| Unifying the two record shapes | Same reason, from the other direction. A third target fits the descriptor; the descriptor is not widened to make the shapes uniform. |
+| Merging `providers.json` and `claude-providers.json` in this refactor | Common workflows can be shared without changing storage. Migration, cross-target name identity, import/export scope, and whole-file recovery are independent choices deferred from this cycle. |
+| Forcing both targets into one universal native settings schema | The tools consume different configuration formats and have different defaults and projection semantics. Shared workflows use target codecs and adapters rather than making every native field optional. |
 | Adding the third target before `1.2.0` | It would be written as a third copy of six layers, and the abstraction would then have to be reverse-engineered from three examples instead of designed against two. |
 | A `--target` flag that replaces `--claude` / `--codex` | The aliases are shipped and documented. Adding the general form is additive; removing the aliases is a break with no benefit. |
 | Per-target backup retention | `backups/` is one directory with one policy, and a directory any surviving manifest references is never deleted. `1.1.3` refuses `--claude` on `backups prune` for this reason. |
