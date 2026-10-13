@@ -1,6 +1,6 @@
 # Testing
 
-Current version: `1.1.3`
+Current version: `1.2.0`
 
 There are two suites, and they cover different things on purpose.
 
@@ -49,10 +49,14 @@ npm pack --dry-run
 
 ## Required Coverage
 
-Focus on the dual-target contract, the `1.1.3` target-scope guarantees, the `1.1.2` error-vocabulary guarantees, the `1.1.1` target-resolution guarantees, the `1.1.0` shared-defaults guarantees, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
+Focus on the dual-target contract, the `1.2.0` shared-workflow guarantees, the `1.1.3` target-scope guarantees, the `1.1.2` error-vocabulary guarantees, the `1.1.1` target-resolution guarantees, the `1.1.0` shared-defaults guarantees, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
 
-- Version metadata is `1.1.3` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
-- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.1.3.md` and `docs/Design/agent-provider-switch-v1.1.3-design.md`, and the PRD/Design pair exists for every version on the `0.3.1 → 1.1.3` line.
+- Version metadata is `1.2.0` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
+- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.2.0.md` and `docs/Design/agent-provider-switch-v1.2.0-design.md`, and the PRD/Design pair exists for every version on the `0.3.1 → 1.2.0` line.
+- The six provider verbs are implemented once: each adapter imports no orchestration, both adapters implement the same hook surface, and `commitProviderChange` has exactly one entry point.
+- `--help` and `--version` load no execution service — no app service, no inquirer runtime, no Codex probe, no registry I/O — asserted in a child process with a counter-case proving the recorder records something.
+- One fake prompt runtime drives both targets' selection and confirmation through `executeCommand()`; a declined confirmation cancels before anything is written.
+- `--target <id>` is equivalent to `--codex` / `--claude` in both positions, and a missing, flag-shaped, unknown, or conflicting id is refused.
 - No error-code string in `src/` begins with `CLAUDE_`, and the set of declared-but-never-thrown codes is exactly the recorded list of five.
 - `PROVIDER_ALREADY_EXISTS` (a record name is taken) and `PROVIDERS_ALREADY_EXISTS` (the registry file exists) are asserted through different commands, so a later merge of the pair is caught.
 - The Claude refusal messages still name Claude even though the code no longer does, and a Claude payload carries no `target` of its own.

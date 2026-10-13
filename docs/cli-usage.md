@@ -1,14 +1,16 @@
 # CLI Usage
 
-This document describes the current `1.1.3` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
+This document describes the current `1.2.0` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects the active Codex route into `config.toml` and `auth.json`, and switches Claude Code `settings.json` profiles.
 
 ## Version
 
-Current package version: `1.1.3`
+Current package version: `1.2.0`
 
 This line targets Codex `0.134.0+`, where the active route is selected by top-level `model` plus `model_provider`. Legacy top-level `profile` and `[profiles.*]` sections may still be inspected for migration/adoption, and `--create-profile` writes one on request, but they are not the recommended managed route.
+
+`1.2.0` adds `--target <id>` and gives the two targets one set of provider workflows, selected through target adapters. `--target codex` and `--target claude` are equivalent to `--codex` and `--claude` in both positions, and the command can sit on either side of the flag: `aps --target claude list` and `aps list --target claude` select the same target. `--target` takes a space-separated value — the `--target=codex` form is refused — and a missing, flag-shaped, or unknown id is `INVALID_ARGUMENT`, as is naming two different targets. This release is a reimplementation, not a migration: stored formats, the JSON envelope, the error vocabulary, issue codes, exit codes, and the `show` masking policies are unchanged, and no `1.1.x` backup needs rewriting.
 
 `1.1.3` makes the target a fact about the command rather than a flag on it. Every command declares a target *scope*, and `status`, `doctor`, and `backups list` report on both targets at once — so a machine with only Claude Code now has a health check. Three consequences: a bare multi-target command carries `"target": null` and names its targets in a new authoritative `targets` array; `doctor` no longer reports a target you never configured, so a fresh tool home is healthy; and the three commands that act on state both targets share — `backups prune`, `rollback`, `unlock` — refuse both target flags. `--codex-dir` is also refused alongside `--claude`, since the directory is part of what the command was asked to report. See the migration table in [CHANGELOG.md](../CHANGELOG.md).
 
@@ -109,7 +111,7 @@ Provider settings tend to overlap almost entirely. `agent-provider-switch.json` 
 
 ```json
 {
-  "version": "1.1.3",
+  "version": "1.2.0",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -435,16 +437,19 @@ There is no `2` for usage errors and no code map. An unrecognized command exited
 
 ## Current Non-Goals
 
-`1.1.3` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
+`1.2.0` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
 
 It also does not provide a redacted export mode, Claude Code plugin marketplace management, a TTL-based lock takeover, an audit log for takeovers, or an exit-code taxonomy. There is no command that creates or edits the `claudeDefaults` block, and no export or import of Claude provider records.
 
-The target is a *scope* declared per command, not yet a *descriptor*. There is no table saying how a target stores providers or what it can do — each target keeps its own hand-written code path and record shape. There is no third target, and no `--target <id>` flag: `--claude` and `--codex` are the only target flags. `TargetId` is a closed union of two, so a third target is a type change that fails at every exhaustive switch rather than something that can appear quietly.
+The target is both a *scope* declared per command and a *descriptor* an adapter implements: `src/domain/target.ts` declares `COMMAND_TARGET_POLICIES` — scope, capability, routing, and flag applicability for all 21 commands — and `src/app/targets/` holds one adapter per target, supplying its records, native plans, matching, defaults resolution, and report reads. The boundary that remains is the third target: `TargetId` is a closed union of two, so a third target is a type change that fails at every exhaustive switch rather than something that can appear quietly. `--claude`, `--codex`, and `--target <id>` are the only target flags, and all three reduce to one selection.
 
 ## Fact Sources
 
 Current:
 
+- [PRD 1.2.0](./PRD/agent-provider-switch-prd-v1.2.0.md)
+- [Design 1.2.0](./Design/agent-provider-switch-v1.2.0-design.md)
+- [ADR-0001](./adr/0001-share-provider-workflows-through-target-adapters.md)
 - [PRD 1.1.3](./PRD/agent-provider-switch-prd-v1.1.3.md)
 - [Design 1.1.3](./Design/agent-provider-switch-v1.1.3-design.md)
 - [PRD 1.1.2](./PRD/agent-provider-switch-prd-v1.1.2.md)

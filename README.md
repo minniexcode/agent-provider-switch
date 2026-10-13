@@ -2,25 +2,9 @@
 
 `@minniexcode/agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing.
 
-It keeps `agent-provider-switch` tool state separate from the target runtime directories, so managed providers, backups, and runtime projection are handled through explicit commands instead of manual file edits.
+It keeps its own state in `~/.config/agent-provider-switch`, separate from the runtime directories it writes, so provider records, backups, and runtime projection change through explicit commands instead of hand-edited `config.toml` and `settings.json`.
 
-Current package version: `1.1.3`
-
-**`1.1.3` makes the target a fact about the command, and it breaks three things.** `doctor`, `status`, and `backups list` now report on both targets in one run and narrow with `--codex` / `--claude`, so `target` on the envelope is `null` for a bare multi-target command and `targets` is the authoritative field. `doctor` no longer reports findings for a target you never set up, and `backups prune`, `rollback`, and `unlock` refuse both target flags because they act on state the targets share. Read the [migration table](./CHANGELOG.md).
-
-`1.1.2` is a breaking `--json` release. Error codes no longer name a target, so the five `CLAUDE_*` codes are renamed onto the ones the Codex line already used, and the duplicated `data.target` payload field is gone. Every refusal is the same refusal, with a different code string; exit codes and messages are unchanged.
-
-`1.1.1` makes the target explicit. Every command acts on Codex unless `--claude` says otherwise, and that default now has a name: `--codex`. The two name different targets and cannot be combined, so passing both is refused rather than resolved by a precedence rule. The JSON envelope gains a `target` field — `"codex"`, `"claude"`, or `null` when no command resolved — written on failures as well as successes. No command gains or loses a target.
-
-`1.1.0` lets Claude Code providers share their common settings. A `claudeDefaults` block in `agent-provider-switch.json` holds the settings every provider repeats, each provider record stores only what differs, and `aps switch --claude` writes the two layered together. `aps config compact --claude` rewrites existing records into that form, and `aps add --claude` now stores new ones that way. Nothing is required: a tool home without the block behaves exactly as before. See [Shared Claude defaults](#shared-claude-defaults).
-
-`1.0.0` renames the tool. The repository, the npm package, the binary (`aps`), the tool home (`~/.config/agent-provider-switch`), the environment variables (`APS_*`), and the state filenames all move together in one breaking release. A tool home left at the pre-`1.0.0` location is moved to the new one automatically by the first command that runs, so upgrading needs no manual step. The old binary name is gone rather than aliased.
-
-`0.4.1` is the stateful-recovery release. It adds `aps unlock [--force]` for a lock whose owner no longer exists, and `aps backups prune [--keep N]` plus automatic retention for a backups directory that previously grew without bound. Same-second mutations no longer overwrite each other's backup, `doctor` reports an occupied or stale lock, and two flags that had never worked now do: `--create-profile` writes the legacy `[profiles.<id>]` section it always claimed to, and `--claude` on a command with no Claude path is refused instead of being ignored.
-
-`0.4.0` is the foundation release. It parses `--claude`, `--force`, `--merge`, `--overwrite`, and `--create-profile` as real boolean flags, makes an unrecognized command exit `1` with a structured error instead of exiting `0` with help, reports the tool-home root in `status`, and moves the whole suite onto a single `runCli(argv, io)` entry ladder that runs on Windows and Linux against Node 20 and 22.
-
-`0.3.x` added Claude Code provider switching via the `--claude` flag and the `0.3.1` secret-handling changes. The tool supports both Codex (OpenAI-compatible providers projected into `config.toml`/`auth.json`) and Claude Code (full `settings.json` profile switching).
+Current package version: `1.2.0`. It adds `--target <id>` and gives both targets one shared implementation; stored formats, the JSON envelope, and the error vocabulary are unchanged. Everything below is what `aps --help` prints today. Per-version release notes are in the [CHANGELOG](./CHANGELOG.md).
 
 ## Install
 
@@ -29,17 +13,11 @@ npm install -g @minniexcode/agent-provider-switch
 aps --help
 ```
 
-For local development:
+Node.js `>=18` is required, with one caveat — see [Not implemented](#not-implemented). To build from source, see [Development](#development).
 
-```bash
-npm install
-npm run build
-node dist/cli.js --help
-```
+## Quick start
 
-Node.js `>=18` is required.
-
-## Primary Workflow (Codex)
+### Codex
 
 ```bash
 aps init
@@ -49,17 +27,15 @@ aps status
 aps doctor
 ```
 
-What the workflow does:
-
-- `init` creates the `agent-provider-switch` tool home files.
+- `init` creates the tool home files.
 - `add` stores a managed provider in `providers.json` and creates or updates the matching `[model_providers.<id>]` projection in `config.toml`.
-- `switch` writes top-level `model` and `model_provider` in the target Codex config and projects `OPENAI_API_KEY` into `auth.json`.
-- `status` summarizes current mapping, auth projection, and drift.
+- `switch` writes top-level `model` and `model_provider`, and projects `OPENAI_API_KEY` into `auth.json`.
+- `status` summarizes the current mapping, the auth projection, and drift.
 - `doctor` reports issue-first diagnostics.
 
 `--profile` is a CLI alias for the managed Codex `model_provider` id. It is not the legacy Codex top-level `profile` selector.
 
-## Claude Code Workflow
+### Claude Code
 
 ```bash
 aps add --claude opus --from-file ~/.claude/settings.json
@@ -68,20 +44,85 @@ aps switch --claude copilot
 aps current --claude
 aps list --claude
 aps show --claude copilot
-aps show --claude copilot --reveal
 ```
 
-What the workflow does:
-
-- `add --claude` imports a complete Claude Code `settings.json` as a named profile into `claude-providers.json`. With a `claudeDefaults` block it stores only the entries that differ from it; `--full` keeps every entry.
+- `add --claude` imports a complete `settings.json` as a named profile into `claude-providers.json`. With a `claudeDefaults` block it stores only the entries that differ from it; `--full` keeps every entry.
 - `switch --claude` atomically replaces `~/.claude/settings.json` with the stored profile, layered over the shared defaults when there are any.
 - `current --claude` detects which registered profile matches the active settings.
 - `list --claude` shows all Claude profiles with an active indicator.
 - `show --claude` prints one profile as it resolves, marks which entries came from the shared defaults, masks secret env values, and withholds the raw `settings` blob.
 
-Without a `claudeDefaults` block, Claude providers store the full `settings.json` content (env vars, model mappings, permissions, plugins) as an opaque blob, and switching replaces the entire file with it. Providers whose settings overlap heavily are better stored as deltas, as described next.
+Without a `claudeDefaults` block, Claude providers store the full `settings.json` as an opaque blob and a switch replaces the whole file with it. Providers whose settings overlap heavily are better stored as deltas, as described next.
 
-### Shared Claude defaults
+## Choosing a target
+
+Every command acts on Codex unless a target flag says otherwise. The three flags are equivalent, and only one target may be named:
+
+| Spelling | Meaning |
+|---|---|
+| *(none)* | Codex — the default |
+| `--codex` | Codex, named explicitly so a command line reads the same whichever target it picks |
+| `--claude` | Claude Code |
+| `--target <id>` | `codex` or `claude`, for a value that arrives from a variable |
+
+Naming two different targets is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule; repeating the same one is accepted. `--target` takes a space-separated value — the `--target=codex` form is refused.
+
+Commands differ in what a target can mean:
+
+| Commands | Targets | What a flag means |
+|---|---|---|
+| `add`, `switch`, `list`, `show`, `current`, `remove` | one | selects the Claude code path; the default is Codex |
+| `init`, `migrate`, `setup`, `edit`, `import`, `export`, `config show`, `config list-profiles` | Codex | a Claude target is refused; `--codex` is accepted and changes nothing |
+| `config compact` | Claude | the Claude target is required — the command has no Codex form |
+| `status`, `doctor`, `backups list` | both | narrows the report instead of choosing a code path; bare means both |
+| `backups prune`, `rollback`, `unlock` | shared | both are refused: one lock and one backups tree serve the targets, so neither flag is a smaller answer |
+
+On the three two-target commands, `--codex-dir` together with a Claude target is refused as well — the directory is part of what the command would otherwise report, and naming one contradicts the narrowing.
+
+### Reporting on both targets
+
+`status`, `doctor`, and `backups list` cover both targets in one run, so a Claude-only user has a health check and a state report of their own.
+
+- **A target you never set up contributes no findings and cannot make the run unhealthy.** The evidence has to be a file — a registry, an actual runtime configuration file, or a defaults block — so an empty `~/.codex` proves nothing and produces no missing-config finding.
+- **A Claude-only run reads no Codex file and never runs the Codex CLI probe**, so a machine with no Codex CLI is not told it has a Codex problem.
+- Every issue names its target. The exception is a stuck lock, reported once with `target: null`, because one lock blocks writes on both. A lock held by a *running* operation is a state rather than a finding, so a background run cannot make `doctor` pronounce the install broken.
+- On a bare multi-target run, `target` on the JSON envelope is `null` — read `targets`, which is authoritative. `target` is non-null exactly when one target is in scope.
+- `backups list` labels each entry `codex`, `claude`, `mixed`, or `unknown`, and a target filters the listing. A manifest that cannot be classified reads `unknown` rather than being guessed at, because the label is what tells you what a `rollback` is about to restore. `mixed` holds files from both targets and appears in both narrowed lists; `unknown` appears only unfiltered.
+
+The full per-target payload shape — every field a reading of `ok` / `absent` / `invalid` / `unavailable`, and a three-valued `healthy` — is specified in the [technical architecture](./docs/agent-provider-switch-technical-architecture.md).
+
+## Commands
+
+```text
+aps init
+aps migrate
+aps list [--claude]
+aps show <provider> [--claude] [--reveal]
+aps current [--claude]
+aps status [--codex] [--claude]
+aps config show
+aps config list-profiles
+aps config compact --claude [--dry-run]
+aps add <provider> --profile <id> --model <model> --api-key <key> [--base-url <url>] [--create-profile]
+aps add --claude <name> --from-file <settings.json> [--full]
+aps edit <provider> [options] [--create-profile]
+aps switch <provider> [--claude]
+aps remove <provider> [--claude] --force
+aps import <file>
+aps export <file>
+aps backups list [--codex] [--claude]
+aps backups prune [--keep N]
+aps unlock [--force]
+aps rollback [backup-id]
+aps doctor [--codex] [--claude]
+aps setup
+```
+
+Every command that takes a target also takes `--target <id>` in place of the shorthand flags. All commands accept `--json` for the standard JSON envelope, and `--codex-dir <path>` to target a specific Codex directory; `--codex-dir` requires a path, and a following token that starts with `-` is refused rather than taken as the value.
+
+`setup` is deprecated and exists only as a pointer to `init` for fresh state or `migrate` for adopting existing Codex config.
+
+## Shared Claude defaults
 
 Provider settings tend to overlap almost entirely: the same dozen env flags, the same theme, often the same permissions block. Put what they share in the tool config, and let each provider record hold only what is its own.
 
@@ -89,7 +130,7 @@ Provider settings tend to overlap almost entirely: the same dozen env flags, the
 
 ```json
 {
-  "version": "1.1.3",
+  "version": "1.2.0",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -146,99 +187,26 @@ Compaction changes only how a provider is stored. Records are resolved over the 
 
 ### Reading secrets back
 
-`show --claude` masks any env value whose key looks like a credential (`*_TOKEN`, `*_API_KEY`,
-`*_SECRET`, `*_PASSWORD`, `*_CREDENTIAL`, anything containing `auth`) in both the human and `--json`
-output. Non-secret neighbours such as `ANTHROPIC_BASE_URL` print normally.
+`show` masks any env value whose key looks like a credential (`*_TOKEN`, `*_API_KEY`, `*_SECRET`, `*_PASSWORD`, `*_CREDENTIAL`, anything containing `auth`) in both the human and `--json` output. Non-secret neighbours such as `ANTHROPIC_BASE_URL` print normally, and Claude `show` withholds the raw `settings` blob in both modes.
 
-`--reveal` is a global flag that prints the real values and includes the `settings` blob. It is an
-explicit escape hatch, so it is never applied by accident:
+`--reveal` prints the real values and includes the `settings` blob. It is an explicit escape hatch, never applied by accident:
 
 ```bash
 aps show --claude copilot --reveal
 ```
 
-Files this tool writes are created with owner-only permissions (`0600` for files, `0700` for
-directories it creates) on **macOS and Linux**. On Windows the permission tightening is skipped —
-NTFS has no group/other bits for `chmod` to set, so access there is decided by ACLs and this tool
-does not touch them.
+Codex `show --json` is the deliberate exception: it returns the full `apiKey` without `--reveal`, as a documented automation contract.
 
-On macOS and Linux, files written before the upgrade keep their previous mode until the next write
-touches them. To fix them all at once:
+Files this tool writes are created with owner-only permissions (`0600` for files, `0700` for directories it creates) on **macOS and Linux**. On Windows the permission tightening is skipped — NTFS has no group/other bits for `chmod` to set, so access there is decided by ACLs and this tool does not touch them. On macOS and Linux, files written before the upgrade keep their previous mode until the next write touches them; to fix them all at once:
 
 ```bash
 # macOS / Linux only — this is a no-op on Windows.
 chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/auth.json ~/.claude/settings.json
 ```
 
-## Both Targets At Once
+## Runtime projection
 
-`status`, `doctor`, and `backups list` cover both targets in one run, so a Claude-only user has a health check and a state report of their own.
-
-`aps doctor` runs the Codex check set and the Claude check set together, and `--codex` / `--claude` narrows it to one. Two rules follow from that:
-
-- **A target you never set up contributes no findings and cannot make the run unhealthy.** `configured` is a reading — `{"status": "ok", "value": false}` is how the payload says so — and a fresh tool home is healthy. The evidence has to be a file: a registry, an actual runtime configuration file, or a defaults block. An empty directory proves nothing, so a `~/.codex` that exists because something else created it does not count, and no missing-config finding follows from it.
-- **`--claude` reads no Codex file and never runs the Codex CLI probe.** A machine with no Codex CLI is not told it has a Codex problem.
-
-Every issue names the target it is about. The one exception is a stuck lock, which is reported once with `target: null`, because one lock blocks writes on both targets. A lock held by a *running* operation is a state rather than a finding — `{"status": "ok", "value": "busy"}` — so a background `aps` run cannot make `doctor` pronounce the install broken.
-
-A finding is not the same thing as a state, and the report keeps them apart. `healthy` is `false` when an issue was found, `true` when the checks completed cleanly, and `null` when they could not be completed *and* nothing that ran found a fault — which is not the same as a target that was inspected and is fine. Every field in a target's section is a reading — `{"status": "ok", "value": …}`, `absent`, `invalid`, or `unavailable` — so "there is no such file", "it could not be read", and "the answer really is zero" are three different payloads instead of one `null`. The identity question — which provider the live configuration is pointed at — is answered once per target in `matching`, which enumerates every candidate rather than silently taking the first.
-
-`aps status --claude` reports the Claude registry and the live `settings.json` and omits the Codex fields entirely. A bare `aps status` reports both, and `target` is then `null` — read `targets` on the envelope, which is the authoritative field; `target` is non-null exactly when one target is in scope.
-
-`aps backups list` labels each entry `codex`, `claude`, `mixed`, or `unknown`, and `--codex` / `--claude` filters the listing. The label is worked out from the target the mutation recorded, then the operation name, then which runtime directory the backed-up files live in — so backups written before `1.1.3` still classify. A manifest that cannot be classified reads as `unknown` rather than being guessed at, which is the safe direction: the label is what tells you what a `rollback` is about to restore. `mixed` holds files from both targets, so it appears in both narrowed lists; `unknown` appears only in the unfiltered one.
-
-## Commands
-
-Current `1.1.3` command surface:
-
-```text
-aps init
-aps migrate
-aps list [--claude]
-aps show <provider> [--claude] [--reveal]
-aps current [--claude]
-aps status [--codex] [--claude]
-aps config show
-aps config list-profiles
-aps config compact --claude [--dry-run]
-aps add <provider> --profile <id> --model <model> --api-key <key> [--base-url <url>] [--create-profile]
-aps add --claude <name> --from-file <settings.json> [--full]
-aps edit <provider> [options] [--create-profile]
-aps switch <provider> [--claude]
-aps remove <provider> [--claude] --force
-aps import <file>
-aps export <file>
-aps backups list [--codex] [--claude]
-aps backups prune [--keep N]
-aps unlock [--force]
-aps rollback [backup-id]
-aps doctor [--codex] [--claude]
-aps setup
-```
-
-`setup` is deprecated and exists only as a pointer to `init` for fresh state or `migrate` for advanced adoption of existing Codex config.
-
-All commands accept `--json` for the standard JSON envelope where supported by the parser, and `--codex-dir <path>` to target a specific Codex directory. `--codex-dir` requires a path: a following token that starts with `-` is refused rather than taken as the value.
-
-Every command acts on Codex unless `--claude` says otherwise. `--codex` names that default, and the two flags contradict each other: passing both is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule.
-
-Three commands hold state the targets share, and neither flag is a smaller answer for them: `backups prune`, `rollback`, and `unlock` refuse both, and the refusal says why. `aps config compact` is the one command with no Codex form, so it requires `--claude` rather than accepting it.
-
-| Commands | Targets | Flag meaning |
-|---|---|---|
-| `add`, `switch`, `list`, `show`, `current`, `remove` | one | `--claude` picks the Claude code path; the default is Codex |
-| `init`, `migrate`, `setup`, `edit`, `import`, `export`, `config show`, `config list-profiles` | Codex | `--claude` is refused; `--codex` is accepted and changes nothing |
-| `config compact` | Claude | `--claude` is required |
-| `status`, `doctor`, `backups list` | both | a flag narrows the report instead of choosing a code path; bare means both |
-| `backups prune`, `rollback`, `unlock` | shared | both flags are refused |
-
-On the three two-target commands, `--codex-dir` together with `--claude` is also refused: the directory is part of what the command would otherwise report, and naming one contradicts the narrowing.
-
-## Runtime Projection
-
-For Codex `0.134.0+`, the active route is the top-level `model` and `model_provider` in `config.toml`.
-
-Managed OpenAI-compatible provider projection uses this shape:
+For Codex `0.134.0+`, the active route is the top-level `model` and `model_provider` in `config.toml`. A managed OpenAI-compatible provider is projected as:
 
 ```toml
 model = "gpt-5"
@@ -251,55 +219,43 @@ wire_api = "responses"
 requires_openai_auth = true
 ```
 
-`agent-provider-switch` does not write legacy `[profiles.*]` sections for new managed providers by default. `--create-profile` is the explicit opt-in that also writes the matching `[profiles.<id>]` section for older Codex builds that route through it, and it removes legacy `env_key`/`env_key_instructions` fields from managed model-provider projections when it writes them.
+Legacy `[profiles.*]` sections are not written for new managed providers by default. `--create-profile` is the explicit opt-in that also writes the matching `[profiles.<id>]` for older Codex builds that route through it, and it removes legacy `env_key` / `env_key_instructions` fields from managed projections when it writes them.
 
-Authentication is projected into the target Codex `auth.json` as API-key mode with `OPENAI_API_KEY`. Do not commit real keys or private provider exports.
+Authentication is projected into the target `auth.json` as API-key mode with `OPENAI_API_KEY`.
 
-## Managed State
-
-Tool home:
+## State and paths
 
 ```text
-~/.config/agent-provider-switch/
+~/.config/agent-provider-switch/     # tool home
   agent-provider-switch.json
   providers.json
   claude-providers.json
   backups/
   .aps.lock
-```
 
-Target Codex directory:
-
-```text
-~/.codex/
+~/.codex/                            # Codex target
   config.toml
   auth.json
-```
 
-Target Claude Code directory:
-
-```text
-~/.claude/
+~/.claude/                           # Claude Code target
   settings.json
 ```
 
 Environment variables:
 
-- `APS_HOME` overrides the `agent-provider-switch` tool home.
-- `APS_CODEX_DIR` provides the default target Codex directory when `--codex-dir` is not passed.
+- `APS_HOME` overrides the tool home.
+- `APS_CODEX_DIR` provides the default Codex directory when `--codex-dir` is not passed.
 - `APS_CLAUDE_DIR` overrides the Claude Code directory (default: `~/.claude`).
 - In development, `NODE_ENV=development` defaults to `./dev-codex/local-sandbox` when no override is set.
 
-## Migration And Adoption
-
-Use `migrate` only when you already have Codex runtime config that should be adopted into managed `providers.json` state. It is not the default fresh-install command.
+`migrate` adopts existing Codex runtime config into managed state, and is not the fresh-install command:
 
 ```bash
 aps migrate
 aps migrate --overwrite --codex-dir ~/.codex
 ```
 
-## Locks And Backup Retention
+## Locks and backups
 
 Every write command takes one lock, shared by both targets, and snapshots the files it touches into `backups/` first.
 
@@ -310,7 +266,7 @@ aps unlock
 aps unlock --force   # a recycled pid you know is not the original owner
 ```
 
-There is no timeout-based takeover: a slow `migrate` can outlast any timer, so a pid that looks live is treated as live. `--force` is the deliberate override for the case where it is not.
+There is no timeout-based takeover: a slow `migrate` can outlast any timer, so a pid that looks live is treated as live, and `--force` is the deliberate override.
 
 Backups are retained to the newest 20 by default. Retention runs automatically after every successful mutation, and `backups prune` is the manual path:
 
@@ -319,30 +275,16 @@ aps backups prune
 aps backups prune --keep 5
 ```
 
-A directory that any surviving manifest still references is never deleted, so a rollback route stays intact even when the backup that created it is old. Directories whose manifest is missing or unreadable are reported rather than deleted. Codex and Claude operations share one `backups/` directory and one `latest.json`.
+A directory that any surviving manifest still references is never deleted, so a rollback route stays intact even when the backup that created it is old. Directories whose manifest is missing or unreadable are reported rather than deleted. Both targets share one `backups/` directory and one `latest.json`.
 
-## Current Non-Goals
+## Not implemented
 
-`1.1.3` does not implement or reserve runtime code paths for:
-
-- A command that creates or edits the `claudeDefaults` block. It is written by hand; `config compact` refuses when it is absent rather than guessing which keys are shared.
-- Export or import of Claude provider records. Both commands are Codex-only.
-- GitHub Copilot SDK integration.
-- GitHub device-flow login.
-- HTTP proxy bridge or local bridge worker commands.
-- Background runtime services, bridge logs, or bridge runtime state.
-- Built-in third-party router packaging.
-- Account systems or cloud sync.
-- Claude Code plugin marketplace management.
-- A target *descriptor* — a table saying how each target stores its providers and what it can do. `1.1.3` declares each command's target *scope* and resolves the targets an invocation covers, but the two targets still have their own hand-written code paths, storage repositories, and record shapes. A third target is the task that will need the descriptor, and it is `1.2.0`'s job.
-- A third target. `TargetId` is a closed union of two, so adding one is a type change that fails at every exhaustive switch — the intended shape, and the reason a third target cannot arrive by accident.
-- A `--target <id>` flag. `--claude` and `--codex` are the only target flags.
-- A pluggable provider type system.
-- A TTL-based lock takeover. A slow `migrate` can exceed any timer, so a recycled pid is fail-closed and `aps unlock --force` is the way out.
-- An audit log for lock takeovers; the takeover reports through the existing result payload.
-- An exit-code taxonomy. Success is `0` and failure is `1`; there is no `2` for usage errors and no code map.
-- Deleting the dead code trees. `src/infra/` and the dead `src/cli/` shims are Phase 3 (`P2-1`).
-- A change to `engines.node`. It still advertises `>=18` while the sole runtime dependency requires `>=20.12`, and CI does not test Node 18 — green CI must not be read as "the advertised floor is supported".
+- Creating or editing the `claudeDefaults` block. It is hand-written, and `config compact` refuses when it is absent rather than guessing which keys are shared.
+- Export or import of Claude provider records — both commands are Codex-only.
+- Claude provider creation from individual fields; only `--from-file` import is supported.
+- GitHub Copilot SDK integration, device-flow login, an HTTP proxy bridge, background runtime services, built-in third-party router packaging, account systems or cloud sync, and Claude Code plugin marketplace management.
+- An exit-code taxonomy: success is `0`, failure is `1`, with no `2` for usage errors.
+- A change to `engines.node`. It still advertises `>=18` while the sole runtime dependency requires `>=20.12`, and CI does not test Node 18 — green CI is not evidence that the advertised floor is supported.
 
 ## Development
 
@@ -352,36 +294,18 @@ npx tsc --noEmit
 npm test          # in-process suite; silence means green
 npm run test:e2e  # real child processes against sandboxed roots; prints passed/failed/skipped
 node dist/cli.js --help
-node dist/cli.js --version
 npm pack --dry-run
 ```
 
 `npm test` runs every `tests/*.spec.js` through one in-process harness and prints nothing when it passes. `npm run test:e2e` builds the CLI and drives the real binary as a child process, with `APS_HOME`, `APS_CODEX_DIR`, and `APS_CLAUDE_DIR` all pointing inside a sandbox that the runner refuses to leave. It is a separate command and a separate CI step: it costs a process spawn per case, and it covers what the in-process suite structurally cannot — exit codes, real pipes, and environment isolation.
 
-## Fact Sources
+## Documentation
 
-Current fact sources:
-
-- [PRD 1.1.3](./docs/PRD/agent-provider-switch-prd-v1.1.3.md)
-- [Design 1.1.3](./docs/Design/agent-provider-switch-v1.1.3-design.md)
-- [PRD 1.1.2](./docs/PRD/agent-provider-switch-prd-v1.1.2.md)
-- [Design 1.1.2](./docs/Design/agent-provider-switch-v1.1.2-design.md)
-- [PRD 1.1.1](./docs/PRD/agent-provider-switch-prd-v1.1.1.md)
-- [Design 1.1.1](./docs/Design/agent-provider-switch-v1.1.1-design.md)
-- [PRD 1.1.0](./docs/PRD/agent-provider-switch-prd-v1.1.0.md)
-- [Design 1.1.0](./docs/Design/agent-provider-switch-v1.1.0-design.md)
-- [PRD 1.0.0](./docs/PRD/agent-provider-switch-prd-v1.0.0.md)
-- [Design 1.0.0](./docs/Design/agent-provider-switch-v1.0.0-design.md)
-- [PRD 0.4.1](./docs/PRD/agent-provider-switch-prd-v0.4.1.md)
-- [Design 0.4.1](./docs/Design/agent-provider-switch-v0.4.1-design.md)
-- [PRD 0.4.0](./docs/PRD/agent-provider-switch-prd-v0.4.0.md)
-- [Design 0.4.0](./docs/Design/agent-provider-switch-v0.4.0-design.md)
-- [PRD 0.3.1](./docs/PRD/agent-provider-switch-prd-v0.3.1.md)
-- [Design 0.3.1](./docs/Design/agent-provider-switch-v0.3.1-design.md)
-- [PRD 0.3.0](./docs/PRD/agent-provider-switch-prd-v0.3.0.md)
-- [Design 0.3.0](./docs/Design/agent-provider-switch-v0.3.0-design.md)
-- [PRD 0.2.1](./docs/PRD/agent-provider-switch-prd-v0.2.1.md)
-- [Design 0.2.1](./docs/Design/agent-provider-switch-v0.2.1-design.md)
+- [Product overview](./docs/agent-provider-switch-product-overview.md)
+- [Technical architecture](./docs/agent-provider-switch-technical-architecture.md)
 - [CLI usage](./docs/cli-usage.md)
+- [1.x roadmap](./docs/agent-provider-switch-1.x-roadmap.md)
+- [CHANGELOG](./CHANGELOG.md)
+- Current fact sources: [PRD 1.2.0](./docs/PRD/agent-provider-switch-prd-v1.2.0.md), [Design 1.2.0](./docs/Design/agent-provider-switch-v1.2.0-design.md)
 
-Historical documents remain under `docs/PRD/` and `docs/Design/` for context only.
+Everything under `docs/PRD/` and `docs/Design/` is kept as history, one PRD and one design document per release.

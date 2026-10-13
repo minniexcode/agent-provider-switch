@@ -6,10 +6,10 @@
 
 本版本的主要成果是减少重复实现，让目标差异集中在适配器中；用户仍按现有方式管理两种工具的 provider。统一的是执行流程，两种工具各自的 native 配置、记录格式和正常操作语义继续保留。
 
-- 状态：**已确认需求，待实现**。
-- 前置版本与行为基线：当前 `1.1.3` 实现，源码审查基线 `1da0a60`。
+- 状态：**已实现并于 2026-10-14 随 `1.2.0` 发布**。
+- 前置版本与行为基线：`1.1.3` 实现，源码审查基线 `1da0a60`。
 - 使用场景：作者个人使用的 CLI；本轮保留当前行为是范围选择，不是对外兼容承诺。
-- 本文与 Technical Design 的完成不代表 `1.2.0` 功能已实现或已发布。
+- 本文与 Technical Design 描述的就是 `1.2.0` 已发布的行为；发布后不再保留计划态表述。
 
 依据：[已确认全局审查](../Reviews/agent-provider-switch-1.2.0-prd-review.md)、[1.x roadmap](../agent-provider-switch-1.x-roadmap.md#4-120--the-target-descriptor)、[ADR-0001](../adr/0001-share-provider-workflows-through-target-adapters.md)。实现方案见 [v1.2.0 Technical Design](../Design/agent-provider-switch-v1.2.0-design.md)，术语使用 [Glossary](../../GLOSSARY.md)。
 

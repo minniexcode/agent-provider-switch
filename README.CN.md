@@ -2,25 +2,9 @@
 
 `@minniexcode/agent-provider-switch` 是一个本地优先的 CLI，用于管理和切换 Codex 与 Claude Code 的 provider 路由。
 
-它把 `agent-provider-switch` 自己的工具状态和目标运行时目录分开，让 provider 管理、备份和运行时投影通过明确命令完成，而不是手工编辑文件。
+它把自己的状态保存在 `~/.config/agent-provider-switch`，与它写入的运行时目录分开，因此 provider 记录、备份和运行时投影都通过明确命令修改，而不是手工编辑 `config.toml` 和 `settings.json`。
 
-当前包版本：`1.1.3`
-
-**`1.1.3` 让 target 成为命令自身的属性，并带来三处破坏性变更。** `doctor`、`status`、`backups list` 现在一次运行同时报告两个 target，用 `--codex` / `--claude` 收窄；因此裸调用多 target 命令时 envelope 的 `target` 为 `null`，权威字段是 `targets`。`doctor` 不再报告你从未配置过的 target，`backups prune`、`rollback`、`unlock` 会拒绝两个 target flag，因为它们操作的是两个 target 共享的状态。见[迁移表](./CHANGELOG.md)。
-
-`1.1.2` 是破坏性的 `--json` 变更。错误码不再携带 target 信息，因此五个 `CLAUDE_*` 错误码被并入 Codex 线早已使用的那几个，重复的 `data.target` payload 字段也被删除。每一次拒绝还是同一次拒绝，只是 code 字符串不同；退出码和消息文本都没有变化。
-
-`1.1.1` 让 target 变成显式概念。每条命令默认作用于 Codex，除非用 `--claude` 指定；这个默认值现在有了名字：`--codex`。两者指向不同 target，不能同时使用，同时传入会被拒绝，而不是按优先级规则择一。JSON envelope 新增 `target` 字段——`"codex"`、`"claude"`，或在没有解析出命令时为 `null`——成功和失败都会写入。没有任何命令新增或失去 target。
-
-`1.1.0` 让 Claude Code provider 共享公共设置。`agent-provider-switch.json` 中的 `claudeDefaults` 块保存所有 provider 重复出现的设置，每个 provider 记录只存自己独有的部分，`aps switch --claude` 把两层叠加后写入。`aps config compact --claude` 把已有记录改写成这种形式，`aps add --claude` 现在也以这种形式保存新记录。这一切都是可选的：没有这个块的工具 home 行为与以前完全一致。详见[共享 Claude 默认设置](#共享-claude-默认设置)。
-
-`1.0.0` 是改名版本。仓库、npm 包名、可执行文件名（`aps`）、工具 home（`~/.config/agent-provider-switch`）、环境变量（`APS_*`）和状态文件名在同一次破坏性发布中一起迁移。留在 `1.0.0` 之前位置的工具 home 会被第一条运行的命令自动移动到新位置，升级不需要任何手工步骤。旧的可执行文件名直接移除，不保留别名。
-
-`0.4.1` 是状态恢复版本。新增 `aps unlock [--force]` 用于处理持锁进程已不存在的锁，新增 `aps backups prune [--keep N]` 及自动保留策略来约束此前无限增长的 `backups/`。同一秒内的多次变更不再互相覆盖备份，`doctor` 会报告被占用或陈旧的锁。另外两个此前从未真正生效的 flag 现在生效了：`--create-profile` 会写入它一直声称要写的旧 `[profiles.<id>]` 段；在不支持 Claude 的命令上传 `--claude` 会被拒绝，而不是被静默忽略。
-
-`0.4.0` 是基础版本。`--claude`、`--force`、`--merge`、`--overwrite`、`--create-profile` 变成真正的 boolean flag；无法识别的命令以退出码 `1` 加结构化错误结束，而不是以退出码 `0` 打印帮助；`status` 报告工具 home 根目录；整个测试套件收敛到唯一的 `runCli(argv, io)` 入口，并在 Windows 和 Linux 的 Node 20 / 22 上运行。
-
-`0.3.x` 通过 `--claude` flag 增加了 Claude Code provider 切换，`0.3.1` 完成了 secret 处理相关修复。工具同时支持 Codex（OpenAI-compatible provider 投影到 `config.toml`/`auth.json`）和 Claude Code（完整 `settings.json` 配置切换）。
+当前包版本：`1.2.0`。它新增 `--target <id>`，并让两个 target 共用同一份实现；存储格式、JSON envelope 和错误码词表都没有变化。下面描述的就是当前 `aps --help` 打印的内容。各版本的发布说明见 [CHANGELOG](./CHANGELOG.md)。
 
 ## 安装
 
@@ -29,17 +13,11 @@ npm install -g @minniexcode/agent-provider-switch
 aps --help
 ```
 
-本地开发：
+需要 Node.js `>=18`，但有一个注意事项 —— 见[未实现](#未实现)。从源码构建见[开发](#开发)。
 
-```bash
-npm install
-npm run build
-node dist/cli.js --help
-```
+## 快速开始
 
-需要 Node.js `>=18`。
-
-## 主工作流 (Codex)
+### Codex
 
 ```bash
 aps init
@@ -49,15 +27,15 @@ aps status
 aps doctor
 ```
 
-- `init` 创建 `agent-provider-switch` 工具状态文件。
-- `add` 在 `providers.json` 中保存受管 provider，并创建或更新对应 `[model_providers.<id>]`。
-- `switch` 写入目标 Codex 配置的顶层 `model` / `model_provider`，并把 `OPENAI_API_KEY` 投影到 `auth.json`。
+- `init` 创建工具 home 文件。
+- `add` 在 `providers.json` 中保存受管 provider，并创建或更新对应的 `[model_providers.<id>]` 投影。
+- `switch` 写入顶层 `model` 和 `model_provider`，并把 `OPENAI_API_KEY` 投影到 `auth.json`。
 - `status` 汇总当前映射、认证投影和漂移状态。
 - `doctor` 输出问题优先的诊断结果。
 
 `--profile` 是受管 Codex `model_provider` id 的 CLI alias，不是旧 Codex 顶层 `profile` selector。
 
-## Claude Code 工作流
+### Claude Code
 
 ```bash
 aps add --claude opus --from-file ~/.claude/settings.json
@@ -66,18 +44,85 @@ aps switch --claude copilot
 aps current --claude
 aps list --claude
 aps show --claude copilot
-aps show --claude copilot --reveal
 ```
 
-- `add --claude` 导入完整的 Claude Code `settings.json` 为一个命名配置。存在 `claudeDefaults` 块时只保存与它不同的条目，`--full` 则保留全部条目。
-- `switch --claude` 原子替换 `~/.claude/settings.json` 为存储的配置；如果有共享默认设置，则叠加在其上。
+- `add --claude` 把完整的 `settings.json` 导入为命名配置，存入 `claude-providers.json`。存在 `claudeDefaults` 块时只保存与它不同的条目，`--full` 则保留全部条目。
+- `switch --claude` 原子替换 `~/.claude/settings.json`；有共享默认设置时叠加在其上。
 - `current --claude` 检测当前活跃的 Claude 配置。
 - `list --claude` 显示所有 Claude 配置及活跃标记。
-- `show --claude` 显示单个配置解析后的结果，标出哪些条目来自共享默认设置，secret 类 env 值被掩码，原始 `settings` blob 不返回。
+- `show --claude` 显示单个配置解析后的结果，标出继承条目，掩码 secret 类 env 值，并且不返回原始 `settings` blob。
 
-没有 `claudeDefaults` 块时，Claude provider 存储完整的 `settings.json` 内容（env 变量、模型映射、权限、插件），切换时替换整个文件。设置高度重叠的 provider 更适合存成差异，见下一节。
+没有 `claudeDefaults` 块时，Claude provider 存储完整的 `settings.json` 内容，切换时替换整个文件。设置高度重叠的 provider 更适合存成差异，见下一节。
 
-### 共享 Claude 默认设置
+## 选择 target
+
+每条命令默认作用于 Codex，除非用 target flag 指定。三个 flag 等价，且一次只能指定一个 target：
+
+| 写法 | 含义 |
+|---|---|
+| *(无)* | Codex —— 默认值 |
+| `--codex` | 显式写出 Codex，让命令行不论选哪个 target 读起来都一致 |
+| `--claude` | Claude Code |
+| `--target <id>` | `codex` 或 `claude`，用于来自变量的取值 |
+
+指定两个不同 target 会以 `INVALID_ARGUMENT` 被拒绝，而不是按优先级择一；重复指定同一个则被接受。`--target` 的值以空格分隔 —— `--target=codex` 这种写法会被拒绝。
+
+不同命令里 target 的含义不同：
+
+| 命令 | target 范围 | flag 的含义 |
+|---|---|---|
+| `add`、`switch`、`list`、`show`、`current`、`remove` | 一个 | 选择 Claude 代码路径；默认是 Codex |
+| `init`、`migrate`、`setup`、`edit`、`import`、`export`、`config show`、`config list-profiles` | Codex | Claude target 被拒绝；`--codex` 被接受且不改变任何行为 |
+| `config compact` | Claude | 必须指定 Claude target —— 该命令没有 Codex 形态 |
+| `status`、`doctor`、`backups list` | 两个 | 收窄报告范围，而不是选择代码路径；裸调用表示两个都要 |
+| `backups prune`、`rollback`、`unlock` | 共享 | 两个都被拒绝：一把锁、一个 `backups/` 同时服务两个 target，任何一个 flag 都不是更小的答案 |
+
+在这三条双 target 命令上，`--codex-dir` 与 Claude target 同时出现也会被拒绝 —— 该目录本来就属于命令要报告的内容，指定它与收窄范围相矛盾。
+
+### 同时报告两个 target
+
+`status`、`doctor`、`backups list` 一次运行同时覆盖两个 target，所以只用 Claude 的用户也有了自己的健康检查与状态报告。
+
+- **你从未配置过的 target 不产生任何 finding，也不会让这次运行变成不健康。** 证据必须是文件 —— 注册表、真实的运行时配置文件，或 defaults 块 —— 所以一个空的 `~/.codex` 什么也证明不了，也不会随之产生"配置缺失"的 finding。
+- **只看 Claude 的运行不读取任何 Codex 文件，也不运行 Codex CLI 探针**，所以机器上没有 Codex CLI 时不会被报告成 Codex 有问题。
+- 每条 finding 都会说明自己属于哪个 target。唯一例外是残留的锁：它只报告一次且 `target` 为 `null`，因为一把锁会同时阻塞两个 target 的写入。正在被运行中的操作持有的锁是一种状态而非 finding，所以后台跑一次命令不会让 `doctor` 断言安装已损坏。
+- 裸调用多 target 命令时，JSON envelope 的 `target` 为 `null` —— 请读 `targets`，它才是权威字段。只有恰有一个 target 在范围内时 `target` 才非空。
+- `aps backups list` 给每条记录打上 `codex`、`claude`、`mixed` 或 `unknown` 标签，并可按 target 过滤。无法分类的 manifest 读作 `unknown` 而不是去猜，因为这个标签正是用来告诉你 `rollback` 将要恢复什么。`mixed` 同时含两个 target 的文件，因此出现在两个收窄后的列表里；`unknown` 只出现在未过滤的列表中。
+
+每个 target 的完整 payload 形状 —— 每个字段都是 `ok` / `absent` / `invalid` / `unavailable` 四种 reading 之一，`healthy` 取三值 —— 见[技术架构文档](./docs/agent-provider-switch-technical-architecture.md)。
+
+## 命令面
+
+```text
+aps init
+aps migrate
+aps list [--claude]
+aps show <provider> [--claude] [--reveal]
+aps current [--claude]
+aps status [--codex] [--claude]
+aps config show
+aps config list-profiles
+aps config compact --claude [--dry-run]
+aps add <provider> --profile <id> --model <model> --api-key <key> [--base-url <url>] [--create-profile]
+aps add --claude <name> --from-file <settings.json> [--full]
+aps edit <provider> [options] [--create-profile]
+aps switch <provider> [--claude]
+aps remove <provider> [--claude] --force
+aps import <file>
+aps export <file>
+aps backups list [--codex] [--claude]
+aps backups prune [--keep N]
+aps unlock [--force]
+aps rollback [backup-id]
+aps doctor [--codex] [--claude]
+aps setup
+```
+
+凡是接受 target 的命令，也都可以用 `--target <id>` 取代那两个简写 flag。所有命令都接受 `--json` 标准 JSON envelope，以及用于指定目标 Codex 目录的 `--codex-dir <path>`；`--codex-dir` 必须跟路径，紧随其后以 `-` 开头的 token 会被拒绝，而不是被当作路径。
+
+`setup` 已废弃，只保留为指向 `init`（全新状态）或 `migrate`（采用已有 Codex 配置）的兼容入口。
+
+## 共享 Claude 默认设置
 
 各 provider 的设置往往几乎完全重叠：同样的十几个 env 开关、同样的主题，常常还有同样的权限块。把公共部分放进工具配置，每个 provider 记录只保留自己独有的内容。
 
@@ -85,7 +130,7 @@ aps show --claude copilot --reveal
 
 ```json
 {
-  "version": "1.1.3",
+  "version": "1.2.0",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -142,92 +187,26 @@ aps config compact --claude             # 备份后把每条记录改写成差�
 
 ### 查看 secret
 
-`show --claude` 会掩码所有 key 名看起来像凭据的 env 值（`*_TOKEN`、`*_API_KEY`、`*_SECRET`、`*_PASSWORD`、`*_CREDENTIAL`，以及任何包含 `auth` 的 key），human 输出和 `--json` 输出都是如此。`ANTHROPIC_BASE_URL` 这类非 secret 的邻居字段照常显示。
+`show` 会掩码所有 key 名看起来像凭据的 env 值（`*_TOKEN`、`*_API_KEY`、`*_SECRET`、`*_PASSWORD`、`*_CREDENTIAL`，以及任何包含 `auth` 的 key），human 输出和 `--json` 输出都是如此。`ANTHROPIC_BASE_URL` 这类非 secret 的邻居字段照常显示，而 Claude `show` 在两种模式下都不返回原始 `settings` blob。
 
-`--reveal` 是全局 flag，用于打印真实值并附带 `settings` blob。它是显式的逃生口，不会被默认应用：
+`--reveal` 打印真实值并附带 `settings` blob。它是显式的逃生口，不会被默认应用：
 
 ```bash
 aps show --claude copilot --reveal
 ```
 
-工具写入的文件在 **macOS 和 Linux** 上使用仅属主可读权限（文件 `0600`，工具自己创建的目录 `0700`）。Windows 上跳过权限收紧 —— NTFS 没有供 `chmod` 设置的 group/other 位，访问由 ACL 决定，本工具不触碰 ACL。
+Codex `show --json` 是刻意的例外：不加 `--reveal` 也会返回完整的 `apiKey`，这是有文档记录的自动化契约。
 
-在 macOS 和 Linux 上，升级前写入的文件会保持原有权限，直到下一次写入触及它。要一次性全部修正：
+工具写入的文件在 **macOS 和 Linux** 上使用仅属主可读权限（文件 `0600`，工具自己创建的目录 `0700`）。Windows 上跳过权限收紧 —— NTFS 没有供 `chmod` 设置的 group/other 位，访问由 ACL 决定，本工具不触碰 ACL。在 macOS 和 Linux 上，升级前写入的文件会保持原有权限，直到下一次写入触及它；要一次性全部修正：
 
 ```bash
 # 仅 macOS / Linux —— 在 Windows 上是 no-op。
 chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/auth.json ~/.claude/settings.json
 ```
 
-## 同时覆盖两个 target
-
-`status`、`doctor`、`backups list` 一次运行同时覆盖两个 target，所以只用 Claude 的用户也有了自己的健康检查与状态报告。
-
-`aps doctor` 同时运行 Codex 与 Claude 两套检查，`--codex` / `--claude` 把它收窄到一个。由此有两条规则：
-
-- **你从未配置过的 target 不产生任何 finding，也不会让这次运行变成不健康。** `configured` 是一个 reading —— `{"status": "ok", "value": false}` 就是 payload 的表述方式；全新的工具 home 是健康的。证据必须是文件：注册表、真实的运行时配置文件，或 defaults 块。空目录什么也证明不了，所以因为别的东西而存在的 `~/.codex` 不算已配置，也不会随之产生任何"配置缺失"的 finding。
-- **`--claude` 不读取任何 Codex 文件，也不会运行 Codex CLI 探针。** 机器上没有 Codex CLI 时，不会被报告成 Codex 有问题。
-
-每条 finding 都会说明自己属于哪个 target。唯一例外是残留的锁：它只报告一次，`target` 为 `null`，因为一把锁会同时阻塞两个 target 的写入。正在被运行中的操作持有的锁则是一种状态而非 finding —— `{"status": "ok", "value": "busy"}` —— 因此后台跑一次 `aps` 不会让 `doctor` 断言安装已损坏。
-
-finding 与状态是两回事，报告把它们分开。有 issue 时 `healthy` 为 `false`，检查干净跑完时为 `true`，而无法完成、同时已跑的检查都没有发现故障时为 `null` —— 这与"检查过且一切正常"不是同一件事。target 区块里的每个字段都是 reading —— `{"status": "ok", "value": …}`、`absent`、`invalid` 或 `unavailable` —— 于是"没有这个文件"、"读不了这个文件"和"答案确实是零"是三种不同的 payload，而不是同一个 `null`。身份问题（当前实时配置指向哪个 provider）在每个 target 里只回答一次，位于 `matching`，它会枚举全部候选，而不是悄悄取第一个。
-
-`aps status --claude` 报告 Claude 注册表和当前的 `settings.json`，并且完全省略 Codex 字段。裸调用 `aps status` 则两者都报，此时 `target` 为 `null` —— 请读 envelope 上的 `targets`，它才是权威字段；只有恰有一个 target 在范围内时 `target` 才非空。
-
-`aps backups list` 给每条记录打上 `codex`、`claude`、`mixed` 或 `unknown` 标签，`--codex` / `--claude` 用于过滤列表。标签先看这次变更记录的 target，再看操作名，最后看被备份的文件位于哪个运行时目录 —— 所以 `1.1.3` 之前写入的备份同样能正确分类。无法分类的 manifest 会读作 `unknown`，而不是去猜，这是安全的方向：这个标签正是用来告诉你 `rollback` 将要恢复什么。`mixed` 同时含有两个 target 的文件，因此出现在两个收窄后的列表里；`unknown` 只出现在未过滤的列表中。
-
-## 命令面
-
-`1.1.3` 当前命令：
-
-```text
-aps init
-aps migrate
-aps list [--claude]
-aps show <provider> [--claude] [--reveal]
-aps current [--claude]
-aps status [--codex] [--claude]
-aps config show
-aps config list-profiles
-aps config compact --claude [--dry-run]
-aps add <provider> --profile <id> --model <model> --api-key <key> [--base-url <url>] [--create-profile]
-aps add --claude <name> --from-file <settings.json> [--full]
-aps edit <provider> [options] [--create-profile]
-aps switch <provider> [--claude]
-aps remove <provider> [--claude] --force
-aps import <file>
-aps export <file>
-aps backups list [--codex] [--claude]
-aps backups prune [--keep N]
-aps unlock [--force]
-aps rollback [backup-id]
-aps doctor [--codex] [--claude]
-aps setup
-```
-
-`setup` 已废弃，只保留为指向 `init` 或 `migrate` 的兼容入口。
-
-所有命令都接受 `--json` 标准 JSON envelope（以解析器支持为限），以及用于指定目标 Codex 目录的 `--codex-dir <path>`。`--codex-dir` 必须跟路径：紧随其后以 `-` 开头的 token 会被拒绝，而不是被当作路径。
-
-每条命令默认作用于 Codex，除非用 `--claude` 指定。`--codex` 是这个默认值的显式名字，两者互相矛盾：同时传入会以 `INVALID_ARGUMENT` 拒绝，而不是按优先级择一。
-
-三条命令操作的是两个 target 共享的状态，对它们来说任何一个 flag 都不是更小的答案：`backups prune`、`rollback`、`unlock` 会拒绝两个 flag，并在拒绝信息里说明原因。`aps config compact` 是唯一没有 Codex 形态的命令，因此它要求 `--claude`，而不是接受它。
-
-| 命令 | target 范围 | flag 的含义 |
-|---|---|---|
-| `add`、`switch`、`list`、`show`、`current`、`remove` | 一个 | `--claude` 选择 Claude 代码路径；默认是 Codex |
-| `init`、`migrate`、`setup`、`edit`、`import`、`export`、`config show`、`config list-profiles` | Codex | `--claude` 被拒绝；`--codex` 被接受且不改变任何行为 |
-| `config compact` | Claude | 必须传 `--claude` |
-| `status`、`doctor`、`backups list` | 两个 | flag 收窄报告范围，而不是选择代码路径；裸调用表示两个都要 |
-| `backups prune`、`rollback`、`unlock` | 共享 | 两个 flag 都被拒绝 |
-
-在这三条双 target 命令上，`--codex-dir` 与 `--claude` 同时出现也会被拒绝：该目录本来就属于命令要报告的内容，指定它与收窄范围相矛盾。
-
 ## Runtime 投影
 
-Codex `0.134.0+` 的活动路由由 `config.toml` 顶层 `model` 和 `model_provider` 决定。
-
-受管 provider 的投影形态：
+Codex `0.134.0+` 的活动路由由 `config.toml` 顶层 `model` 和 `model_provider` 决定。受管 OpenAI-compatible provider 的投影形态：
 
 ```toml
 model = "gpt-5"
@@ -240,48 +219,36 @@ wire_api = "responses"
 requires_openai_auth = true
 ```
 
-`agent-provider-switch` 默认不为新受管 provider 写入旧 `[profiles.*]`。`--create-profile` 是显式开关，用于额外写入对应的 `[profiles.<id>]` 段，供仍通过该段路由的旧 Codex 版本使用；写入受管投影时它会清理旧 `env_key` / `env_key_instructions` 字段。
+默认不为新受管 provider 写入旧 `[profiles.*]` 段。`--create-profile` 是显式开关，用于额外写入对应的 `[profiles.<id>]`，供仍通过该段路由的旧 Codex 版本使用；写入受管投影时它会清理旧 `env_key` / `env_key_instructions` 字段。
 
-认证会投影到目标 Codex `auth.json`，使用 API-key 模式和 `OPENAI_API_KEY`。不要提交真实 API key、`auth.json` 或私有 provider 导出。
+认证会投影到目标 `auth.json`，使用 API-key 模式和 `OPENAI_API_KEY`。
 
 ## 状态位置
 
-工具 home：
-
 ```text
-~/.config/agent-provider-switch/
+~/.config/agent-provider-switch/     # 工具 home
   agent-provider-switch.json
   providers.json
   claude-providers.json
   backups/
   .aps.lock
-```
 
-目标 Codex 目录：
-
-```text
-~/.codex/
+~/.codex/                            # Codex target
   config.toml
   auth.json
-```
 
-目标 Claude Code 目录：
-
-```text
-~/.claude/
+~/.claude/                           # Claude Code target
   settings.json
 ```
 
 环境变量：
 
-- `APS_HOME` 覆盖 `agent-provider-switch` 工具 home。
-- `APS_CODEX_DIR` 在未传 `--codex-dir` 时提供默认目标 Codex 目录。
+- `APS_HOME` 覆盖工具 home。
+- `APS_CODEX_DIR` 在未传 `--codex-dir` 时提供默认 Codex 目录。
 - `APS_CLAUDE_DIR` 覆盖 Claude Code 目录（默认：`~/.claude`）。
 - 开发环境下，`NODE_ENV=development` 且没有显式覆盖时默认使用 `./dev-codex/local-sandbox`。
 
-## 迁移与采用
-
-只有当你已经有 Codex 配置，并希望把它 adopt 到受管 `providers.json` 时才使用 `migrate`。新安装默认使用 `init`。
+`migrate` 把已有的 Codex 运行时配置 adopt 到受管状态，它不是全新安装的命令：
 
 ```bash
 aps migrate
@@ -290,7 +257,7 @@ aps migrate --overwrite --codex-dir ~/.codex
 
 ## 锁与备份保留
 
-每个写入命令都会获取同一把锁（两个目标共用），并先把要改动的文件快照到 `backups/`。
+每个写入命令都会获取同一把锁（两个 target 共用），并先把要改动的文件快照到 `backups/`。
 
 写入过程中被 kill 的进程会把锁留下。`aps unlock` 可以清除它，但只会在确认记录的持有者确实已消失之后才清除 —— 持有者仍存活时会被拒绝，因为从运行中的进程手里抢锁会破坏状态，而拒绝只是带来不便：
 
@@ -299,7 +266,7 @@ aps unlock
 aps unlock --force   # 用于你确认已被复用的 pid
 ```
 
-这里没有基于超时的接管：慢速 `migrate` 可以超过任何计时器，所以看起来存活的 pid 一律按存活处理。`--force` 是针对"它其实不是原持有者"这一情况的显式覆盖。
+这里没有基于超时的接管：慢速 `migrate` 可以超过任何计时器，所以看起来存活的 pid 一律按存活处理，`--force` 是针对"它其实不是原持有者"这一情况的显式覆盖。
 
 备份默认保留最新的 20 个。每次成功变更后都会自动执行保留策略，`backups prune` 是手动入口：
 
@@ -308,30 +275,16 @@ aps backups prune
 aps backups prune --keep 5
 ```
 
-任何仍被幸存 manifest 引用的目录都不会被删除，因此即使创建它的备份本身很旧，回滚路径依然完整。manifest 缺失或不可读的目录只会被报告，不会被删除。Codex 和 Claude 共用同一个 `backups/` 目录和同一个 `latest.json`。
+任何仍被幸存 manifest 引用的目录都不会被删除，因此即使创建它的备份本身很旧，回滚路径依然完整。manifest 缺失或不可读的目录只会被报告，不会被删除。两个 target 共用同一个 `backups/` 目录和同一个 `latest.json`。
 
-## 当前非目标
+## 未实现
 
-`1.1.3` 不实现也不预留以下 runtime 代码路径：
-
-- 创建或编辑 `claudeDefaults` 块的命令。它需要手工编写；块不存在时 `config compact` 会拒绝执行，而不是去猜哪些键是公共的。
-- Claude provider 记录的导出与导入。这两个命令只支持 Codex。
-- GitHub Copilot SDK 集成。
-- GitHub device-flow 登录。
-- HTTP proxy bridge 或本地 bridge worker 命令。
-- 后台 runtime service、bridge log 或 bridge runtime state。
-- 内置第三方 router 封装。
-- 账号系统或云同步。
-- Claude Code 插件市场管理。
-- target *描述符* —— 一张声明每个 target 如何存储 provider、能做什么的表。`1.1.3` 声明了每条命令的 target 范围，也解析出一次调用覆盖哪些 target，但两个 target 各自仍走手写的代码路径、存储仓库和记录形状。第三个 target 才是必须引入描述符的任务，那是 `1.2.0` 的工作。
-- 第三个 target。`TargetId` 是两个值的封闭 union，新增一个是一次类型变更，会在每一个穷尽 switch 处编译失败 —— 这是刻意的形状，也是第三个 target 不会意外出现的原因。
-- `--target <id>` flag。target flag 只有 `--claude` 和 `--codex`。
-- 可插拔 provider 类型系统。
-- 基于 TTL 的锁接管。慢速 `migrate` 可以超过任何计时器，因此被复用的 pid 一律 fail-closed，出口是 `aps unlock --force`。
-- 锁接管的审计日志；接管结果通过现有的结果 payload 报告。
-- 退出码分类体系。成功为 `0`，失败为 `1`；没有用于用法错误的 `2`，也没有 code map。
-- 删除死代码树。`src/infra/` 和死掉的 `src/cli/` shim 属于 Phase 3（`P2-1`）。
-- 修改 `engines.node`。它仍声明 `>=18`，而唯一的运行时依赖要求 `>=20.12`，且 CI 不测试 Node 18 —— CI 全绿不能被理解为"声明的最低版本已受支持"。
+- 创建或编辑 `claudeDefaults` 块的命令。它需要手工编写，块不存在时 `config compact` 会拒绝执行，而不是去猜哪些键是公共的。
+- Claude provider 记录的导出与导入 —— 这两个命令只支持 Codex。
+- 按字段逐个创建 Claude provider；目前只支持 `--from-file` 导入。
+- GitHub Copilot SDK 集成、device-flow 登录、HTTP proxy bridge、后台 runtime service、内置第三方 router 封装、账号系统或云同步、Claude Code 插件市场管理。
+- 退出码分类体系：成功为 `0`，失败为 `1`，没有用于用法错误的 `2`。
+- 修改 `engines.node`。它仍声明 `>=18`，而唯一的运行时依赖要求 `>=20.12`，且 CI 不测试 Node 18 —— CI 全绿不能证明声明的最低版本已受支持。
 
 ## 开发
 
@@ -341,34 +294,18 @@ npx tsc --noEmit
 npm test          # 进程内测试套件；静默即通过
 npm run test:e2e  # 真实子进程 + 沙箱根目录；打印 passed/failed/skipped
 node dist/cli.js --help
-node dist/cli.js --version
 npm pack --dry-run
 ```
 
 `npm test` 通过唯一的进程内 harness 运行所有 `tests/*.spec.js`，通过时不打印任何内容。`npm run test:e2e` 先构建 CLI，再把真实二进制作为子进程驱动，`APS_HOME`、`APS_CODEX_DIR`、`APS_CLAUDE_DIR` 全部指向运行器拒绝离开的沙箱。它是独立命令、也是独立的 CI 步骤：每个用例都要付一次进程启动成本，而它覆盖的是进程内套件在结构上无法覆盖的部分 —— 退出码、真实管道、环境隔离。
 
-## 当前事实源
+## 文档
 
-- [PRD 1.1.3](./docs/PRD/agent-provider-switch-prd-v1.1.3.md)
-- [Design 1.1.3](./docs/Design/agent-provider-switch-v1.1.3-design.md)
-- [PRD 1.1.2](./docs/PRD/agent-provider-switch-prd-v1.1.2.md)
-- [Design 1.1.2](./docs/Design/agent-provider-switch-v1.1.2-design.md)
-- [PRD 1.1.1](./docs/PRD/agent-provider-switch-prd-v1.1.1.md)
-- [Design 1.1.1](./docs/Design/agent-provider-switch-v1.1.1-design.md)
-- [PRD 1.1.0](./docs/PRD/agent-provider-switch-prd-v1.1.0.md)
-- [Design 1.1.0](./docs/Design/agent-provider-switch-v1.1.0-design.md)
-- [PRD 1.0.0](./docs/PRD/agent-provider-switch-prd-v1.0.0.md)
-- [Design 1.0.0](./docs/Design/agent-provider-switch-v1.0.0-design.md)
-- [PRD 0.4.1](./docs/PRD/agent-provider-switch-prd-v0.4.1.md)
-- [Design 0.4.1](./docs/Design/agent-provider-switch-v0.4.1-design.md)
-- [PRD 0.4.0](./docs/PRD/agent-provider-switch-prd-v0.4.0.md)
-- [Design 0.4.0](./docs/Design/agent-provider-switch-v0.4.0-design.md)
-- [PRD 0.3.1](./docs/PRD/agent-provider-switch-prd-v0.3.1.md)
-- [Design 0.3.1](./docs/Design/agent-provider-switch-v0.3.1-design.md)
-- [PRD 0.3.0](./docs/PRD/agent-provider-switch-prd-v0.3.0.md)
-- [Design 0.3.0](./docs/Design/agent-provider-switch-v0.3.0-design.md)
-- [PRD 0.2.1](./docs/PRD/agent-provider-switch-prd-v0.2.1.md)
-- [Design 0.2.1](./docs/Design/agent-provider-switch-v0.2.1-design.md)
-- [CLI usage](./docs/cli-usage.md)
+- [产品概览](./docs/agent-provider-switch-product-overview.md)
+- [技术架构](./docs/agent-provider-switch-technical-architecture.md)
+- [CLI 用法](./docs/cli-usage.md)
+- [1.x 路线图](./docs/agent-provider-switch-1.x-roadmap.md)
+- [CHANGELOG](./CHANGELOG.md)
+- 当前事实源：[PRD 1.2.0](./docs/PRD/agent-provider-switch-prd-v1.2.0.md)、[Design 1.2.0](./docs/Design/agent-provider-switch-v1.2.0-design.md)
 
-旧 `0.1.x` / `0.2.x` 文档保留为历史记录。
+`docs/PRD/` 和 `docs/Design/` 下的内容都作为历史保留，每次发布各对应一份 PRD 和一份设计文档。

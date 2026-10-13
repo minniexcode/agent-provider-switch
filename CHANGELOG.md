@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.2.0 - 2026-10-14
+
+**Not a break of stored state or the JSON contract.** This release replaces two parallel implementations with one, so it moves code rather than data. `providers.json`, `claude-providers.json`, and `agent-provider-switch.json` keep their paths, shapes, and ordering; the envelope keeps its fields and meanings; the error vocabulary, the issue codes, the exit codes, and the three `show` policies are unchanged. A backup written by `1.1.x` still reads, and a `rollback` still restores it. Nothing `1.1.3` documented is withdrawn, and no migration step is needed to upgrade.
+
+**Why the rewrite.** The six provider verbs existed twice — `add`, `list`, `show`, `current`, `switch`, `remove`, once over `providers.json` and once over `claude-providers.json` — and each copy repeated the same five steps: prepare the input, declare the affected files, take the lock, write the record, project it into the target's native configuration. The Claude services had been written from the Codex ones, so a fix in either had to be made in both, and the two had already drifted where nothing asserted otherwise. `1.1.3` made the target a first-class value everywhere it is *observed* — the envelope, the error vocabulary, diagnostics, backups, the flag guards — and nowhere it is *implemented*. This is the release that spends the seam: the workflows become one, and a target becomes an adapter that declares its differences.
+
+The boundary is deliberate. What is shared is orchestration — the transaction, the registry I/O, the chooser, the report composition, the presentation dispatch. What stays per-target is everything that is genuinely a fact about Codex or about Claude Code: the record schema, the native projection, the matching rules, the defaults merge, and the text a user reads. A third target should now add a descriptor and an adapter, not a sixth copy of six layers.
+
+### Added
+
+- `--target <id>`, with `codex` and `claude` as its values. It is a third spelling of `--codex` and `--claude` and produces the same selection, so it can sit before or after the command tokens (`aps --target claude list`, `aps list --target claude`). The `=` form is refused — `--target` does not accept it — as are a missing, flag-shaped, or unknown id, and naming two different targets. Repeating the same target is accepted. The point of the flag is a value that arrives from a variable, where `--codex` and `--claude` would mean an `if` in the caller.
+- `src/app/provider-workflows.ts` — the six verbs, once, ending at a single `commitProviderChange()` boundary. It is the only caller of `runMutation()` for a provider write, so one logical change still takes one lock and writes one backup.
+- `src/app/targets/` — `types.ts` (the adapter contract), `codex-adapter.ts`, `claude-adapter.ts`, and `report-ports.ts`. An adapter declares its records, its native plans, its matching and payload views, and its report reads. It may not import the shared workflow module, `run-mutation.ts`, the registry repo, the shared chooser, or the binding layer.
+- `src/commands/target-bindings.ts` and `src/commands/target-presenters.ts`. A handler reaches a workflow through `bindTarget()` / `bindCodexTarget()` / `bindClaudeTarget()`, which is also where the target's presenter is attached; `presenterFor()` is a static map, and a missing presenter is an internal error rather than a fallback to another target's text.
+- `src/cli/report-lines.ts`. The pure text helpers the renderer and the per-target presenters both use. They live beside the renderer rather than in either consumer because the renderer *selects* a presenter — a presenter importing the renderer back would be an import cycle.
+- `src/app/collect-target-reports.ts` — the generic `doctor` / `status` / `backups list` composer. It runs the shared tool-config inspection and the lock check once and asks each in-scope target's report port for its own section.
+- `src/storage/provider-registry-repo.ts` — `createRegistryRepo(path, codec, errorPolicy)`, the one JSON registry reader/writer. Both registries keep their own file, their own record shape, and their own error policy; only the reading and writing is shared.
+- `src/domain/provider-registry.ts` and `src/domain/command.ts` — the generic registry shape, and the command and verb vocabulary (`CommandId`, `ProviderVerb`, `isProviderVerb`).
+- `src/storage/tool-home-paths.ts` — the tool's own identity: the home paths, the state filenames, the env-var prefix, and the frozen `LEGACY_*` names. They moved out of `codex-paths.ts`, which now holds only the `~/.codex` target. The `LEGACY_*` constants are read-only and were moved, not updated.
+- Three specs that assert structure rather than output, because the property they check is about the call graph: `tests/shared-workflows.spec.js` (adapters import no orchestration; both adapters implement the same hook surface; `commitProviderChange` has one entry point), `tests/load-boundary.spec.js` (`--help` loads no execution service, in a child process, with a counter-case so a recorder that records nothing cannot pass), and `tests/provider-prompts.spec.js` (one fake prompt runtime driven through both targets).
+
+### Changed
+
+- Target selection is normalized once. `parseArgs()` extracts `--target <id>` alongside `--json`, `--reveal`, `--codex-dir`, and the declared boolean flags, and reduces all three spellings to one selection that every guard, handler, and report reads. Nothing downstream re-reads a flag.
+- `src/domain/target.ts`'s per-command table now carries the whole answer in `COMMAND_TARGET_POLICIES` — scope, target capability, routing, and flag applicability — read back through `policyOf()`, `scopeOf()`, `acceptsTarget()`, `acceptsTargetFlag()`, `routesToClaudeHandler()`, `resolveCommandTargets()`, and `singleTarget()`. Capability and routing stay different questions: `acceptsTarget()` is true for a report command, while `routesToClaudeHandler()` is not, because no Claude handler could produce the whole answer for a two-target report.
+- Both targets share one chooser and one confirmation path, through an injectable prompt runtime. A non-interactive run and a `--json` run ask nothing; a declined confirmation cancels before the lock is taken, so it leaves no backup and no partial write.
+- `doctor`, `status`, and `backups list` compose through the report ports. An out-of-scope target is never read: `aps doctor --claude` opens no `config.toml` and runs no Codex CLI probe.
+- Presentation is split. `src/cli/output.ts` renders the shared view and the envelope and delegates to a target's presenter when exactly one target is in scope; a presenter maps a payload to lines and may not read a file, resolve a path, or probe a runtime.
+- `--help` still loads none of this. `src/commands/registry.ts` holds declarations only and the handler is loaded by `src/commands/dispatch.ts`, so help never pulls in the app services, the inquirer runtime, the Codex probe, or registry I/O.
+
+### Removed
+
+- The fourteen per-target app services the shared workflows replace: `add-provider.ts`, `list-providers.ts`, `show-provider.ts`, `get-current-profile.ts`, `switch-provider.ts`, `remove-provider.ts`, `run-doctor.ts`, and the seven `claude-*.ts` services; plus `src/interaction/interactive.ts`, whose chooser both targets now share.
+
+### Notes
+
+- The three `show` policies are deliberately untouched: Codex `show --json` still returns the full `apiKey` without `--reveal` as a documented automation contract, and Claude `show` still masks secret env values and withholds the raw `settings` blob in both modes.
+- `--full` and `--dry-run` are still refused with `INVALID_ARGUMENT` anywhere they would be ignored, and that check still runs before the Claude early-return.
+- `restoreManifest()` still requires an allowlist built by its caller and never reads one from the manifest, so a target's backup attribution cannot become a restore grant.
+- The dead trees — `src/infra/` and the four remaining `src/cli/` shims — are untouched. They are still `P2-1`, and this release did not make them reachable.
+
 ## 1.1.3 - 2026-10-13
 
 **Breaking.** The target becomes a fact about the command rather than a flag on it. `doctor`, `status`, and `backups list` now report on both targets in one run and narrow with `--codex` / `--claude`, instead of reporting on Codex and refusing the flag. Three payload and invocation changes follow from that, and they are the whole break: `target` is `null` on a bare multi-target command, `doctor` stops reporting a target the user never set up, and the three shared-state commands refuse both target flags.

@@ -2,11 +2,11 @@
 
 ## 1. 状态、依据与实现基线
 
-本文实现 [v1.2.0 PRD](../PRD/agent-provider-switch-prd-v1.2.0.md)，依据 [全局审查](../Reviews/agent-provider-switch-1.2.0-prd-review.md) 和已接受的 [ADR-0001](../adr/0001-share-provider-workflows-through-target-adapters.md)。状态为 **设计完成，待实现**；当前包版本仍是 `1.1.3`，源码审查基线 `1da0a60`。
+本文实现 [v1.2.0 PRD](../PRD/agent-provider-switch-prd-v1.2.0.md)，依据 [全局审查](../Reviews/agent-provider-switch-1.2.0-prd-review.md) 和已接受的 [ADR-0001](../adr/0001-share-provider-workflows-through-target-adapters.md)。状态为 **已实现并随 `1.2.0` 发布（2026-10-14）**；`1.1.3` 是前置版本，源码审查基线 `1da0a60`。
 
 本轮提取公共 provider 工作流与目标适配器，新增 selector，统一公共交互与报告编排。保留当前记录格式、正常业务语义、JSON 契约及共享锁/备份模型。[1.1.x 个人使用验收及暂缓记录](../Reviews/agent-provider-switch-1.1.x-implementation-verification.md) 是实际行为基线；本文不把旧 PRD 中尚未实现的边界重新纳入范围。
 
-设计中的新路径和接口是实施约定，不表示文件已经存在。实施时可以调整小模块划分与私有类型名称，但必须满足职责边界和验收规则。
+下面描述的新路径和接口现在都已落地。只有一处命名与实施不同：§2 表中的 `commands/provider-handler.ts` 实际写在既有的 `src/commands/handlers.ts` 里，没有另建文件；职责边界和验收规则未变。
 
 ## 2. 架构与模块职责
 
@@ -403,4 +403,4 @@ npm run test:e2e
 git diff --check
 ```
 
-两套测试会重建 dist，顺序执行。正式发布时同步 README/usage/help、technical architecture、CLAUDE、CHANGELOG 与 package/lock 版本，并执行现有发布检查。本文交付阶段只完成设计文档，不提前变更业务源码或包版本。
+两套测试会重建 dist，顺序执行。正式发布时同步 README/usage/help、technical architecture、CLAUDE、CHANGELOG 与 package/lock 版本，并执行现有发布检查。本轮发布已按此清单执行：README 三份、`cli-usage.md`、technical architecture、CLAUDE、CHANGELOG 以及 `package.json` / `package-lock.json` 的 `1.2.0` 版本同步完成。

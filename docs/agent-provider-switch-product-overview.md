@@ -1,17 +1,17 @@
 # agent-provider-switch Product Overview
 
-Current version: `1.1.3`
+Current version: `1.2.0`
 
 Current fact sources:
 
-- [`PRD/agent-provider-switch-prd-v1.1.3.md`](./PRD/agent-provider-switch-prd-v1.1.3.md)
-- [`Design/agent-provider-switch-v1.1.3-design.md`](./Design/agent-provider-switch-v1.1.3-design.md)
+- [`PRD/agent-provider-switch-prd-v1.2.0.md`](./PRD/agent-provider-switch-prd-v1.2.0.md)
+- [`Design/agent-provider-switch-v1.2.0-design.md`](./Design/agent-provider-switch-v1.2.0-design.md)
 - [`PRD/agent-provider-switch-prd-v1.1.0.md`](./PRD/agent-provider-switch-prd-v1.1.0.md) for Claude defaults and compaction
 - [`cli-usage.md`](./cli-usage.md)
 
-Planned `1.2.0`: [PRD](./PRD/agent-provider-switch-prd-v1.2.0.md) and
-[Technical Design](./Design/agent-provider-switch-v1.2.0-design.md) define shared target workflows;
-the requirements and design are complete, and implementation remains planned.
+`1.2.0` gives both targets one set of provider workflows, selected through target adapters, and adds
+`--target <id>` beside `--codex` and `--claude`. Stored formats, the JSON envelope, and the error
+vocabulary are unchanged; this release reimplements rather than migrates.
 
 ## Product
 
@@ -54,11 +54,10 @@ settings while removing redundant stored overrides.
 The current product manages local providers and configuration. It does not include account
 onboarding, hosted services, local proxy bridges, or background runtime orchestration.
 
-The confirmed [1.2.0 plan](./agent-provider-switch-1.x-roadmap.md#4-120--the-target-descriptor)
-introduces target descriptors, common workflows, unified interaction and report composition, and
-`--target <id>` alongside the aliases. These are planned features, not part of the current binary.
-The plan preserves current target operation semantics and stored formats; a third target follows
-separately.
+`1.2.0` introduced target descriptors, common workflows, unified interaction and report composition,
+and `--target <id>` alongside the aliases, while preserving target operation semantics and stored
+formats. A third target follows separately — see
+[the 1.x roadmap](./agent-provider-switch-1.x-roadmap.md#4-120--the-target-descriptor).
 
 ## Users
 

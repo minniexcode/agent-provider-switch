@@ -1,7 +1,8 @@
 # agent-provider-switch 1.x Roadmap
 
 A decision document for the `1.1.x` → `1.3.0` line. The original inventory was written against
-`1.1.0`; §4 was reviewed against the accepted `1.1.3` implementation on 2026-10-13.
+`1.1.0`; §4 was reviewed against the accepted `1.1.3` implementation on 2026-10-13, and implemented
+as `1.2.0` on 2026-10-14.
 
 It **supersedes the plan half** of `docs/agent-provider-switch-2.x-roadmap.md`. That file's §2 issue
 inventory is still the ID source for `P0-*` / `P1-*` / `P2-*` citations and is not restated here; its
@@ -90,6 +91,7 @@ rules are normative; implementation alignment and verification are tracked separ
 | `1.1.1` | The target becomes explicit: `--codex`, one `resolveTarget()`, `target` on the envelope. Additive. | `docs/PRD/agent-provider-switch-prd-v1.1.1.md` | `docs/Design/agent-provider-switch-v1.1.1-design.md` |
 | `1.1.2` | One error vocabulary: five codes merged, renamed, or deleted; `data.target` removed. Declared error/payload contract changes. | `…prd-v1.1.2.md` | `…v1.1.2-design.md` |
 | `1.1.3` | The six shared-state commands report both targets; a scope table replaces three ad-hoc decisions. | `…prd-v1.1.3.md` | `…v1.1.3-design.md` |
+| `1.2.0` | One implementation of the six provider verbs, reached through target adapters; `--target <id>` added. Code rather than data: stored formats and the JSON contract are unchanged. | `…prd-v1.2.0.md` | `…v1.2.0-design.md` |
 
 The reviewed line accepts breaking changes for the author's single-user CLI. `1.1.2` changes
 error codes and removes `data.target`; `1.1.3` adds authoritative envelope `targets`, changes
@@ -216,10 +218,11 @@ requiring a fabricated third target or reopening the deferred 1.1.x defensive ba
 [the global review](Reviews/agent-provider-switch-1.2.0-prd-review.md) and recorded in
 [ADR-0001](adr/0001-share-provider-workflows-through-target-adapters.md). The
 [formal 1.2.0 PRD](PRD/agent-provider-switch-prd-v1.2.0.md) and
-[Technical Design](Design/agent-provider-switch-v1.2.0-design.md) now define the requirements,
-adapter contracts, implementation order, and acceptance cases. Documentation is complete;
-implementation remains planned. Current-version fact sources must describe `1.1.3`; planned
-descriptor behavior must remain identified as future work.
+[Technical Design](Design/agent-provider-switch-v1.2.0-design.md) define the requirements,
+adapter contracts, implementation order, and acceptance cases. **Implemented and released as
+`1.2.0` on 2026-10-14**, with the current fact sources now pointing at the `1.2.0` pair. The
+`1.1.3` documents remain current for the target-scope and two-target-report behavior they describe,
+which this release preserved.
 
 ## 5. `1.3.0` — the third target
 
