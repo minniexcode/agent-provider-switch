@@ -56,9 +56,18 @@ module.exports = {
 
         result = await runJsonCli({ toolHomeDir, args: ["status", "--json", "--codex-dir", codexDir] });
         assert.equal(result.payload.ok, true);
-        assert.equal(result.payload.data.provider, "gamma");
-        assert.equal(result.payload.data.currentModelProvider, "gamma");
-        assert.equal(result.payload.data.auth.valid, true);
+        // The answer lives in the target's section, and the identity question is asked once: the
+        // active provider is the `managed` match, not a second field that could disagree with it.
+        assert.deepEqual(result.payload.data.codex.matching, {
+          status: "ok",
+          value: {
+            state: "managed",
+            activeProvider: "gamma",
+            candidates: [{ name: "gamma", consistent: true, differencePaths: [] }],
+          },
+        });
+        assert.equal(result.payload.data.codex.currentModelProvider, "gamma");
+        assert.deepEqual(result.payload.data.codex.artifacts.auth, { status: "ok", value: { valid: true } });
 
         result = await runJsonCli({ toolHomeDir, args: ["doctor", "--json", "--codex-dir", codexDir] });
         assert.equal(result.payload.ok, true);
@@ -128,22 +137,26 @@ module.exports = {
         assert.equal(issue.lockStatus, "dead");
         assert.match(issue.remedy, /aps unlock/);
 
-        // A live owner is not recoverable. Every write command fails while it is present, which
-        // is why doctor has to surface it rather than leaving the user to hit the error blind.
+        // A live owner is a *state*, not a fault. Every write command fails while it is present,
+        // which is exactly why failing the report over it would be wrong: a background `aps` run
+        // would make `doctor` say the install is broken. The reading says `busy`, and the issue
+        // list stays empty.
         writeLock(process.pid);
         result = await runJsonCli({ toolHomeDir, args: ["doctor", "--json", "--codex-dir", codexDir] });
-        issue = result.payload.data.issues.find((entry) => entry.code === "LOCK_OCCUPIED");
-        assert.ok(issue, `expected LOCK_OCCUPIED, got ${JSON.stringify(issueCodes(result.payload))}`);
-        assert.equal(issue.activePid, process.pid);
-        assert.equal(issue.lockStatus, "live");
-        assert.match(issue.remedy, /unlock --force/);
+        assert.deepEqual(result.payload.data.shared.lock, { status: "ok", value: "busy" });
+        assert.equal(
+          issueCodes(result.payload).some((code) => code.startsWith("LOCK_")),
+          false,
+          `a live lock must not be a finding: ${JSON.stringify(issueCodes(result.payload))}`
+        );
 
         // Reporting "absent" as a finding would make every healthy run look like it had
         // something to fix.
         fs.rmSync(lockPath, { force: true });
         result = await runJsonCli({ toolHomeDir, args: ["doctor", "--json", "--codex-dir", codexDir] });
+        assert.deepEqual(result.payload.data.shared.lock, { status: "ok", value: "free" });
         assert.equal(
-          issueCodes(result.payload).some((code) => code === "LOCK_STALE" || code === "LOCK_OCCUPIED"),
+          issueCodes(result.payload).some((code) => code.startsWith("LOCK_")),
           false
         );
       },
@@ -182,7 +195,7 @@ module.exports = {
         assert.equal(switched.payload.ok, true);
 
         const status = await runJsonCli({ toolHomeDir, args: ["status", "--json", "--codex-dir", codexDir] });
-        assert.equal(status.payload.data.currentModelProvider, "gamma");
+        assert.equal(status.payload.data.codex.currentModelProvider, "gamma");
 
         const config = fs.readFileSync(path.join(codexDir, "config.toml"), "utf8");
         assert.match(config, /^model_provider = "gamma"$/m);

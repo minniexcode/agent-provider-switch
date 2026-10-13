@@ -1,6 +1,6 @@
 # Testing
 
-Current version: `1.1.2`
+Current version: `1.1.3`
 
 There are two suites, and they cover different things on purpose.
 
@@ -49,15 +49,15 @@ npm pack --dry-run
 
 ## Required Coverage
 
-Focus on the dual-target contract, the `1.1.2` error-vocabulary guarantees, the `1.1.1` target-resolution guarantees, the `1.1.0` shared-defaults guarantees, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
+Focus on the dual-target contract, the `1.1.3` target-scope guarantees, the `1.1.2` error-vocabulary guarantees, the `1.1.1` target-resolution guarantees, the `1.1.0` shared-defaults guarantees, the `1.0.0` migration guarantees, the `0.4.1` recovery guarantees, and the `0.3.1` secret-handling guarantees:
 
-- Version metadata is `1.1.2` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
-- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.1.2.md` and `docs/Design/agent-provider-switch-v1.1.2-design.md`, and the PRD/Design pair exists for every version on the `0.3.1 → 1.1.2` line.
+- Version metadata is `1.1.3` in `package.json` and both spots in `package-lock.json`, and `aps --version` prints it.
+- Current docs point to `docs/PRD/agent-provider-switch-prd-v1.1.3.md` and `docs/Design/agent-provider-switch-v1.1.3-design.md`, and the PRD/Design pair exists for every version on the `0.3.1 → 1.1.3` line.
 - No error-code string in `src/` begins with `CLAUDE_`, and the set of declared-but-never-thrown codes is exactly the recorded list of five.
 - `PROVIDER_ALREADY_EXISTS` (a record name is taken) and `PROVIDERS_ALREADY_EXISTS` (the registry file exists) are asserted through different commands, so a later merge of the pair is caught.
 - The Claude refusal messages still name Claude even though the code no longer does, and a Claude payload carries no `target` of its own.
 - Every command id has a declared target scope, and the accept/refuse matrix for `--claude`, `--codex`, and the pair holds for all of them.
-- The envelope carries a definite `target` on success and on failure, and a failure raised after resolution reports the resolved target rather than `null`.
+- The envelope carries the authoritative `targets` array and a `target` that is non-null exactly when `targets` holds one id; a failure raised after resolution reports the resolved target, and a refusal raised by the flags reports `targets: []` with `target: null`.
 - The legacy tool home moves once, and only when `APS_HOME` is unset, the new home is absent, and the old lock has no live owner.
 - Help exposes only current commands: `init`, `migrate`, `list`, `show`, `current`, `status`, `config show`, `config list-profiles`, `config compact`, `add`, `edit`, `switch`, `remove`, `import`, `export`, `backups list`, `backups prune`, `unlock`, `rollback`, `doctor`, and deprecated `setup`.
 - Fresh provider flow: `init -> add -> switch -> status -> doctor`.
@@ -77,6 +77,25 @@ Focus on the dual-target contract, the `1.1.2` error-vocabulary guarantees, the 
 - The suite runs green with no `dev-codex/` present; Codex fixtures are generated per test by `makeCodexFixture()`.
 - The Claude provider workflow (`add`, `switch`, `list`, `current`, `show`, `remove`) runs end to end against a `APS_CLAUDE_DIR` that is verified to sit inside a temporary directory.
 
+### Target scope
+
+Covered by `tests/target-scope.spec.js`, `tests/doctor-targets.spec.js`, `tests/claude-status.spec.js`, and `tests/backup-targets.spec.js`.
+
+- Every command id has a declared scope, and `target-scope.spec.js` holds a **hand-written** table of all 21 commands to check it against. A table derived from the code would agree with the code by construction and would assert nothing.
+- The accept/refuse matrix runs the real order — `assertFlagsApply`, then `resolveTarget`, then `selectedTargets` — for one flag, the other, and the pair, on every command. The pair refusal is asserted in four distinct message buckets, because "does not support `--claude`", "has no Codex form", and "operates on state every target shares" are three different reasons and only a fourth case is the genuine contradiction.
+- Scope and routing are asserted to differ on exactly three commands — `status`, `doctor`, `backups list` accept `--claude` and do not route to a Claude handler — so a later change that conflates the two questions fails here rather than silently narrowing a report.
+- `--codex-dir` together with `--claude` is refused on a `both` command, while `list --claude --codex-dir <path>` keeps its long-standing accepted form.
+- A bare `doctor` and a bare `status` report both targets with `target: null`; a narrowed one reports one target and omits the other's fields entirely.
+- An unconfigured target contributes no issue and leaves `healthy` true, and an in-scope unconfigured target still builds its payload so `configured` is reported as a reading — `{status: "ok", value: false}` — rather than the section being absent.
+- Evidence is a file, never a directory: a sandbox whose Codex directory exists and holds nothing reads `configured: false`. A malformed file still counts — the file is there, whatever it says.
+- A registry with no `config.toml`, and a `config.toml` carrying no top-level `model_provider`, are both `not-activated`: no issue, no CLI probe, `healthy: true`. `MODEL_PROVIDER_MISSING` is asserted unreachable, since it told a user who had never switched anything that their setup needed repair.
+- Identity is answered once per target, in `matching`. A live lock is `{status: "ok", value: "busy"}` and raises no finding; only a dead owner (`LOCK_STALE`) or a record that cannot be attributed (`LOCK_ABNORMAL`) does, and the lock is inspected once under every scope.
+- Damage is local. A malformed registry leaves `providerCount` and `matching` `unavailable` while the rest of that section and the other target's results survive, the command still exits `0` with `ok: true`, and `healthy` is `false` rather than `null` — a fault was established.
+- `status --claude` resolves a stored delta record and marks the row that matches the live `settings.json` active, and its section carries no raw `settings` blob in either mode.
+- Claude identity includes the authentication paths, so two records that differ only in their token are two candidates and the report is `ambiguous` rather than naming the one that sorts first.
+- Backup classification: a recorded `target` wins over the reason and the containment; each `claude-` reason and each Codex operation name classifies as expected; a path in the tool home classifies as `unknown` rather than being guessed; and a tree containing files from both targets reads `mixed`. The narrowed listing includes `mixed` in **both** lists and `unknown` in neither.
+- Rollback impact is read from the restore paths alone, never from the manifest's target or reason: a registry-only backup reports `["claude"]` while listing as `codex`, and `data.impact` separates shared-only recovery from paths that could not be attributed.
+
 ### Shared Claude defaults
 
 Covered by `tests/tool-config.spec.js`, `tests/claude-settings-merge.spec.js`, `tests/claude-defaults.spec.js`, and `tests/claude-config-compact.spec.js`. Each guarantee below was checked by mutating the built module and confirming a spec fails; a spec that stays green under the matching mutation is not pinning anything.
@@ -93,7 +112,7 @@ Covered by `tests/tool-config.spec.js`, `tests/claude-settings-merge.spec.js`, `
 ### Recovery
 
 - A stale lock — owner pid gone — is taken over rather than blocking the write, and `doctor` reports it as `LOCK_STALE`.
-- A live lock is never taken over; `doctor` reports `LOCK_OCCUPIED` and `unlock` refuses with `LOCK_CONFLICT`.
+- A live lock is never taken over; `doctor` reports it as the state `data.shared.lock: {status: "ok", value: "busy"}` with no `LOCK_*` finding, and `unlock` refuses with `LOCK_CONFLICT`.
 - `unlock` succeeds as a no-op when no lock is present, and `--force` clears a live lock.
 - Retention keeps the newest `N`, deletes the rest, and **never** deletes a directory a surviving manifest still references.
 - A failed-and-rolled-back mutation does not leave its backup directory behind.
@@ -105,7 +124,9 @@ Covered by `tests/tool-config.spec.js`, `tests/claude-settings-merge.spec.js`, `
 - A synchronous parse failure produces the envelope on stderr under `--json`, and never on stdout.
 - Boolean flags are position-independent, and `--claude` placed before the command name resolves.
 - `--codex-dir` refuses a following flag instead of taking it as the path.
-- `--claude` is refused on a command with no Claude path.
+- `--claude` is refused on a command with no Claude path (`init --claude`), and the refusal names the ten commands that do accept it.
+- A bare `doctor` in a sandbox covering both targets reports both sections, prefixes every human line `[codex]` or `[claude]`, and finds only what is actually wrong: the Codex side contributes `CODEX_NOT_INSTALLED` and the empty Claude root contributes nothing, rather than the absence findings this used to assert. The pair refusal and the `--codex-dir`-with-`--claude` refusal both come back with `targets: []`.
+- A Claude-only machine — a Claude provider added and switched, with the sandbox's Codex CLI removed from the child `PATH` — reports `healthy: true` and no Codex finding at all.
 - Every mutating command has an asserted human rendering, not only a JSON envelope.
 
 Do not add tests for removed `0.2.1` runtime experiments such as Copilot SDK integration, GitHub login, `add --copilot`, or bridge commands.

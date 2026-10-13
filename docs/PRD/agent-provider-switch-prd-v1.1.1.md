@@ -10,8 +10,8 @@ it again as the `claude-` prefix on its backup operation name. There is no `--co
 default" has no name.
 
 This release adds the missing name and the single function that reads all of it. `--codex` becomes
-an accepted flag on every command, `resolveTarget()` becomes the one place "which target" is
-decided, and the JSON envelope gains a `target` field that is always present. Nothing else changes:
+an accepted flag on every command except Claude-only `config compact`. `resolveTarget()` becomes
+the one place "which target" is decided, and the JSON envelope gains a `target` field that is always present. Nothing else changes:
 no command gains or loses a Claude path, no stored file changes shape, and every existing `--json`
 payload is byte-identical apart from the new envelope field.
 
@@ -21,21 +21,23 @@ targets, and the `1.2.0` target abstraction) each need "which target" to be a va
 rather than a convention they have to re-derive.
 
 Design detail: `docs/Design/agent-provider-switch-v1.1.1-design.md`. This release closes no roadmap
-finding. It is the first of three releases on the `1.1.x` line; `1.1.3` is the only one that changes
-what a command does.
+finding. It is the first target-foundation stage after `1.1.0`. `1.1.2` changes the error
+vocabulary and `1.1.3` changes diagnostic behavior and command scope.
 
 ## Version
 
 - Version line: `1.1.1`
 - Predecessor: `1.1.0`
-- Status: **planned.** Backward compatible; a patch release because it is purely additive.
+- Status: **foundation-stage specification.** Its flag and envelope additions preserve `1.1.0`
+  payloads. The final reviewed `1.1.3` contract deliberately supersedes some scope and flag behavior;
+  this document does not promise compatibility across future releases.
 
 ## Goals
 
 - **One answer to "which target".** A single `resolveTarget()` decides it from the parsed command and
   its flags. The three existing conventions keep working but stop being independent sources of truth.
-- **The default has a name.** `--codex` is accepted everywhere, so a script can state the target it
-  means instead of relying on the absence of `--claude`.
+- **The default has a name.** `--codex` names the Codex route where accepted, so a script can state
+  the target it means instead of relying on the absence of `--claude`.
 - **Every envelope says which target it answers about.** `--json` carries `target` on success and on
   failure alike, so a consumer no longer infers the target from `command` plus a `CLAUDE_*` error
   code.
@@ -109,10 +111,12 @@ The JSON envelope gains one field:
 }
 ```
 
-**It is `null` when no command resolved.** A parse failure (`aps --json --codex-dir`) and an
-unrecognized command (`aps --json lst`) both produce an envelope with `"target": null`, because
+**It is `null` when no command or valid target route resolved.** A parse failure
+(`aps --json --codex-dir`) and an unrecognized command (`aps --json lst`) both produce an envelope with `"target": null`, because
 there is no command for it to describe. Reporting `"codex"` there would assert a default that was
-never chosen; reporting nothing would make the field's presence depend on the outcome.
+never chosen; reporting nothing would make the field's presence depend on the outcome. Conflicting
+or unsupported target selections also produce `target: null`. Resolve and validate the target route
+before migration, config reads, or other file I/O; later execution failures retain the accepted route.
 
 **It is present on failure too.** A failed `switch --claude` and a successful one both say
 `"target": "claude"`. This is the field's whole point: a consumer reads the target from one place
@@ -121,6 +125,18 @@ instead of correlating `command` with a `CLAUDE_*` error code.
 **It does not replace `data.target`.** Both are emitted in `1.1.1` for any Claude command. The
 duplicate is deliberate and short-lived, and `--json` output for every existing command stays
 byte-identical apart from the one added field.
+
+### Stage boundary and final scope semantics
+
+In `1.1.1`, `target` is the accepted dispatch route. The three shared commands still enter through
+the legacy Codex handler and carry its `"codex"` routing tag. That tag does not describe the target
+state a rollback restores: a shared rollback can already restore Claude files.
+
+The final contract in [the 1.1.3 PRD](agent-provider-switch-prd-v1.1.3.md) uses accepted command
+scope instead. Envelope `targets` is authoritative, and `target` is its single-target alias.
+Shared commands have `targets: []` and `target: null`; rollback reports restore impact separately
+in its result. Backup origin is a third concept. These are deliberate breaking corrections to the
+foundation routing tag, with no legacy field or compatibility window.
 
 ## Behaviour By Command
 
@@ -133,6 +149,19 @@ No row in this table changes anything a user observes, apart from the flag and t
 | `doctor`, `status`, `backups list`, `backups prune`, `rollback`, `unlock` | `--codex` accepted, equivalent to omitting it. `--claude` behaviour unchanged (`backups prune`, `rollback`, `unlock` still refuse it). `--json` gains `target: "codex"`. |
 | every unrecognized-command or parse-failure envelope | `target: null`. |
 
+Two of those rows are worth stating rather than leaving in a table cell, because `1.1.3` moves them
+and a reader of this document alone would not expect it.
+
+**The six commands above change scope in `1.1.3`.** Bare `doctor`, `status`, and
+`backups list` become two-target reports. `backups prune`, `rollback`, and `unlock` become
+explicitly shared and refuse both target flags. All six change their bare envelope `target` from
+`"codex"` to `null`. The three shared commands' earlier value describes their handler route only,
+never their restore impact.
+
+**`1.1.1` refuses `aps status --claude`.** The command reports Codex state and has no Claude form
+until `1.1.3` gives it one, so the refusal is the correct behaviour here and the capability is that
+release's. Nothing in the documents for this release may describe it as available.
+
 ## Release Mechanics
 
 - `package.json` and both spots in `package-lock.json` move to `1.1.1`.
@@ -141,24 +170,23 @@ No row in this table changes anything a user observes, apart from the flag and t
 - `CHANGELOG.md` gains a `1.1.1` entry.
 - `README.md`, `README.CN.md`, `README.AI.md`, `docs/cli-usage.md`, and `docs/Tests/testing.md` carry
   the new version and document `--codex` and the envelope's `target`.
-- `docs/agent-provider-switch-product-overview.md` and
-  `docs/agent-provider-switch-technical-architecture.md` are brought current in this release rather
-  than a later one: they are the only two documents that describe the product as a whole, and they
-  currently describe a Codex-only tool at `0.2.1`. The literal `aps status --claude` answers about
-  Claude is a fact the overview has to be able to state, and it cannot while it says "for Codex".
+- Product overview and architecture documentation must describe both targets and the foundation
+  routing tag honestly. Keep `status --claude` and final scope semantics in the `1.1.3` stage.
+  Verification of current product documentation is separate from this stage's requirements.
 - Publishing is a manual step.
 
 ## Acceptance Criteria
 
-1. `aps list --codex` and `aps list` produce identical `data`; JSON field order aside, the only
-   difference is the flag's absence from the payload.
+1. `aps list --codex` and `aps list` produce identical `data` and the same accepted Codex route.
 2. `aps list --claude --codex` fails with `INVALID_ARGUMENT` and names both flags.
 3. `aps config compact --codex` fails with `INVALID_ARGUMENT`, and `config compact --claude` is
    unaffected.
-4. Every `--json` success carries a non-null `target`, and it is `"claude"` exactly when
-   `--claude` selected the Claude path.
+4. Every executed command's `--json` success carries a non-null `target`, and it is `"claude"` when
+   `--claude` selected the Claude path. Shared-command `"codex"` values are legacy routing tags.
+   Informational help/version contexts that execute no command retain `target: null`.
 5. Every `--json` failure carries `target`; it is `null` for a parse failure and for an unrecognized
-   command.
+   command. Rejected target scopes/conflicts also carry `target: null`; file-read failures after
+   accepted routing retain the route.
 6. A Claude command's `--json` payload still contains `data.target === "claude"`, unchanged.
 7. `aps doctor --claude` is still refused with `INVALID_ARGUMENT` naming the Claude-capable set, and
    the refusal is unchanged from `1.1.0`.

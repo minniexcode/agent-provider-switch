@@ -7,41 +7,40 @@ import { claudeShowProvider } from "../app/claude-show-provider";
 import { claudeSwitchProvider } from "../app/claude-switch-provider";
 import { CommandResult } from "../app/types";
 import { cliError } from "../domain/errors";
+import { routesToClaudeHandler, scopeOfName } from "../domain/target";
 import { createClaudePaths } from "../storage/claude-paths";
 import { createToolHomePaths } from "../storage/codex-paths";
 import { canPrompt, confirmProviderRemoval } from "../interaction/interactive";
 import { getSingleOption, hasFlag } from "./args";
-import { CommandExecutionContext, ParsedCommand } from "./types";
+import { CommandExecutionContext, CommandId, ParsedCommand } from "./types";
 import { createPromptRuntime } from "../interaction/prompt";
 import { readClaudeProvidersFileIfExists } from "../storage/claude-providers-repo";
-import { claudeSettingsMatch, resolveClaudeProvidersFile } from "../domain/claude-providers";
+import { resolveClaudeProvidersFile } from "../domain/claude-providers";
+import { matchClaudeProviders } from "../domain/claude-identity";
 import { readClaudeSettings } from "../storage/claude-providers-repo";
 
 /**
- * Commands that support the --claude flag.
- */
-const CLAUDE_COMMANDS = new Set(["add", "switch", "list", "show", "current", "remove", "config-compact"]);
-
-/**
- * Returns true when the command has a Claude Code path at all.
- */
-export function supportsClaudeTarget(command: string | null): boolean {
-  return command !== null && CLAUDE_COMMANDS.has(command);
-}
-
-/**
- * The Claude-capable command ids, for a refusal that can name them.
- */
-export function getClaudeCommandNames(): string[] {
-  return [...CLAUDE_COMMANDS].sort();
-}
-
-/**
- * Returns true when the parsed command targets Claude Code instead of Codex.
+ * Returns true when this dispatch belongs to `handleClaudeCommand`.
+ *
+ * Different from "accepts `--claude`", and the difference is the point: `doctor`, `status`, and
+ * `backups list` accept the flag and must still reach their own handler, because they report on
+ * both targets and no Claude handler could produce the whole answer. `TARGET_SCOPES` states that
+ * distinction once; both this function and the flag guard read it.
+ *
+ * A `claude-only` command routes here whether or not the flag is present — it has no Codex form to
+ * fall back to, and its own handler is where the missing-flag refusal is raised.
  */
 export function isClaudeCommand(command: string | null, commandOptions: Map<string, string[]>): boolean {
   if (!command) return false;
-  return CLAUDE_COMMANDS.has(command) && commandOptions.has("--claude");
+  const scope = scopeOfName(command);
+  // The lookup above is what proves the token is a real command id, which is what makes the
+  // narrowing cast safe and keeps the routing question answered by one predicate.
+  if (scope === null || !routesToClaudeHandler(command as CommandId)) return false;
+
+  // A `claude-only` command routes here whether or not the flag is present: it has no Codex form
+  // to fall back to, and its handler is where the missing-flag refusal is raised. A `switchable`
+  // one routes here only when it named Claude. `both` never reaches this function.
+  return scope === "claude-only" || commandOptions.has("--claude");
 }
 
 /**
@@ -236,6 +235,16 @@ export async function handleClaudeCommand(
     }
 
     case "config-compact": {
+      // `aps config compact` has no Codex form, so `claude-only` routes it here whether or not the
+      // flag was typed — which puts the missing-flag refusal here rather than in the Codex switch
+      // that no longer sees it. Checked before the defaults block below, because with neither the
+      // flag nor a defaults block the flag is the thing the user left off.
+      if (!parsed.commandOptions.has("--claude")) {
+        throw cliError("INVALID_ARGUMENT", "config compact requires --claude: it rewrites Claude provider records.", {
+          command: ctx.command,
+        });
+      }
+
       // Unlike every other consumer, this one cannot run without defaults: compacting against
       // nothing would report success while changing nothing. Refuse, and say where the block goes.
       if (defaults === null) {
@@ -280,12 +289,22 @@ async function promptForClaudeProviderSelection(
   }
 
   const currentSettings = readClaudeSettings(claudeSettingsPath);
+  const match = matchClaudeProviders({
+    live: currentSettings,
+    providers: Object.fromEntries(names.map((name) => [name, file.providers[name].effective])),
+  });
   const choices = names.map((name) => {
     const record = file.providers[name];
-    const isActive = currentSettings ? claudeSettingsMatch(record.effective, currentSettings) : false;
+    // "(current)" requires a unique match. On an ambiguous one the marker would be a claim the
+    // comparison did not make; the row says "(candidate)" instead, which is what is actually known.
+    const suffix =
+      match.state === "managed" && match.activeProvider === name
+        ? " (current)"
+        : match.state === "ambiguous" && match.candidates.some((candidate) => candidate.name === name)
+          ? " (candidate)"
+          : "";
     const env = record.effective.env as Record<string, string> | undefined;
     const model = (record.effective.model as string) ?? "";
-    const suffix = isActive ? " (current)" : "";
     const baseUrl = env?.ANTHROPIC_BASE_URL ?? "";
     return {
       name: `${name}${suffix} [model=${model}, base=${baseUrl}]`,

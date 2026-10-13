@@ -45,6 +45,7 @@ export async function claudeConfigCompact(args: {
     backupsDir: args.backupsDir,
     latestBackupPath: args.latestBackupPath,
     operation: "claude-config-compact",
+    target: "claude",
     files: [{ absolutePath: args.claudeProvidersPath, relativePath: "claude-providers.json" }],
     mutate: () => {
       // Re-read under the lock. The preview above ran without it, so another writer may have added

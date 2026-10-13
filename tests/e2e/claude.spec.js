@@ -201,20 +201,54 @@ module.exports = {
         const ghostShow = runFail(sandbox, ["show", "ghost", "--claude", "--json"]);
         assert.equal(ghostShow.json.error.code, "PROVIDER_NOT_FOUND");
 
-        // `--claude` is not a wildcard: a command outside the supported set rejects it rather than
+        // `--claude` is not a wildcard: a command with no Claude form rejects it rather than
         // silently running the Codex path, which would report Codex state under a Claude flag.
-        const unsupported = runFail(sandbox, ["status", "--claude", "--json"]);
+        const unsupported = runFail(sandbox, ["init", "--claude", "--json"]);
         assert.equal(unsupported.json.error.code, "INVALID_ARGUMENT");
-        assert.equal(unsupported.json.error.details.command, "status");
+        assert.equal(unsupported.json.error.details.command, "init");
+        assert.match(unsupported.json.error.message, /does not support --claude/);
+        // The refusal names what the flag does apply to, so the caller does not have to guess
+        // whether the flag or the command was the mistake. `status`, `doctor`, and `backups list`
+        // joined the list in 1.1.3, where the flag narrows a two-target report instead of choosing
+        // a code path — a distinction `handleRegisteredCommand` keeps, since those three must not
+        // reach a Claude handler.
         assert.deepEqual(unsupported.json.error.details.supportedCommands, [
           "add",
+          "backups-list",
           "config-compact",
           "current",
+          "doctor",
           "list",
           "remove",
           "show",
+          "status",
           "switch",
         ]);
+
+        // The other refusal, which is a different sentence for a different reason: these commands
+        // act on state the targets share, so `--claude` names a narrowing that does not exist
+        // rather than a capability the command lacks.
+        const shared = runFail(sandbox, ["backups", "prune", "--claude", "--json"]);
+        assert.equal(shared.json.error.code, "INVALID_ARGUMENT");
+        assert.match(shared.json.error.message, /operates on state every target shares/);
+
+        // The new capability on this side of the flag: a Claude-only report, from the command that
+        // used to refuse it. The registry has one provider and no settings.json has been written in
+        // this sandbox, which the section states rather than fails on.
+        const status = runOk(sandbox, ["status", "--claude", "--json"]);
+        assert.deepEqual(status.json.targets, ["claude"]);
+        assert.equal(status.json.target, "claude");
+        assert.deepEqual(status.json.data.claude.providerCount, { status: "ok", value: 1 });
+        // No `settings.json` is not a fault and not an unresolved identity: the file is absent, so
+        // the state is `not-activated` and the report stays healthy.
+        assert.deepEqual(status.json.data.claude.matching, {
+          status: "ok",
+          value: { state: "not-activated", activeProvider: null, candidates: [] },
+        });
+        assert.deepEqual(status.json.data.claude.activation, { status: "ok", value: "not-activated" });
+        // The Codex block is dropped rather than blanked, so a `--claude` run carries no Codex
+        // field at all.
+        assert.equal(status.json.data.codex, undefined);
 
         // Nothing above may have reached the real settings.json — there is not one to reach.
         assert.equal(fs.existsSync(settingsPath(sandbox)), false);

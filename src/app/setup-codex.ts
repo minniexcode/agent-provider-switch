@@ -1,4 +1,5 @@
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { buildSetupDrafts, collectMigrateAdoptability, findIncompleteSetupProfiles, SetupProviderDetails } from "../domain/setup";
 import { cliError } from "../domain/errors";
 import { buildManagedProfileViews } from "../domain/config";
@@ -10,6 +11,9 @@ import {
   readStructuredConfig,
 } from "../storage/config-repo";
 import { ensureDir } from "../storage/fs-utils";
+import { createClaudePaths } from "../storage/claude-paths";
+import { TOOL_CONFIG_FILENAME } from "../storage/codex-paths";
+import { inspectToolConfig } from "./inspect-tool-config";
 import { mergeProviders, readProvidersFileIfExists, writeProvidersFile } from "../storage/providers-repo";
 import { MIN_SUPPORTED_CODEX_VERSION } from "../runtime/codex-version";
 import { runDoctor } from "./run-doctor";
@@ -126,6 +130,7 @@ export async function migrateCodex(args: {
     backupsDir: args.backupsDir,
     latestBackupPath: args.latestBackupPath,
     operation: "migrate",
+    target: "codex",
     files: [
       { absolutePath: args.providersPath, relativePath: "providers.json" },
       { absolutePath: args.configPath, relativePath: "config.toml" },
@@ -151,11 +156,28 @@ export async function migrateCodex(args: {
   });
 
   // Re-run doctor on the final state so migrate returns immediate post-migration diagnostics.
+  // Codex only, which is what `1.1.2` reported and what this command is about: migrate writes
+  // Codex state, so a Claude finding in its result would be about a target it never touched.
+  // The Claude paths are supplied because `runDoctor()` requires them of every caller — an
+  // out-of-scope target reads nothing, so nothing here is probed or reported.
+  const toolHomeDir = path.dirname(args.backupsDir);
+  const inspection = inspectToolConfig(path.join(toolHomeDir, TOOL_CONFIG_FILENAME));
+  const claudePaths = createClaudePaths(toolHomeDir);
   const doctor = await runDoctor({
-    codexDir: args.codexDir,
-    configPath: args.configPath,
-    providersPath: args.providersPath,
-    authPath: args.authPath,
+    targets: ["codex"],
+    toolHomeRoot: toolHomeDir,
+    codex: {
+      codexDir: args.codexDir,
+      codexDirUnavailableReason: null,
+      providersPath: args.providersPath,
+      defaultsPresent: inspection.reading.status === "ok" && inspection.reading.value.defaultsPresent,
+    },
+    claude: {
+      claudeDir: claudePaths.claudeDir,
+      claudeProvidersPath: claudePaths.claudeProvidersPath,
+      claudeSettingsPath: claudePaths.claudeSettingsPath,
+    },
+    toolConfig: inspection,
     lockPath: args.lockPath,
   });
 

@@ -75,7 +75,9 @@ module.exports = {
         assert.ok(edited.json.data.updatedFields.includes("note"));
 
         const status = runOk(sandbox, ["status", "--json"]);
-        assert.equal(status.json.data.currentModelProvider, "gamma");
+        // The Codex answer is read from the Codex section: a bare `status` covers both targets, and
+        // a top-level field could not say whose model provider it was naming.
+        assert.equal(status.json.data.codex.currentModelProvider, "gamma");
 
         // A second provider, so the one being removed is not the active route: removing the
         // active route requires --switch-to and would be refused for a different reason.

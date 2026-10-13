@@ -60,7 +60,7 @@ returns an object aliasing them.
 
 | Function | Contract |
 |---|---|
-| `mergeClaudeSettings(defaults, overrides)` | Plain objects merge recursively; the override wins; arrays and scalars are replaced wholesale; a `null` override deletes the key. The result never contains a `null` object member. |
+| `mergeClaudeSettings(defaults, overrides)` | Plain objects merge recursively; the override wins; arrays and scalars are replaced wholesale; a `null` override deletes the key. Objects participating in recursive merge contain no `null` member; arrays retain all contents, including nested `null`. |
 | `diffClaudeSettings(defaults, full)` | The smallest delta `d` with `merge(defaults, d)` deep-equal to `merge(defaults, full)`. Idempotent. |
 | `collectInheritedPaths(defaults, overrides)` | Dotted paths whose effective value comes from the defaults. **Paths, never values.** |
 | `collectDroppedPaths(defaults, full)` | Dotted paths in `full` that `diff` drops because they equal a default. |
@@ -71,7 +71,9 @@ covers both, and `env` is simply the part that repeats most.
 
 **Arrays are replaced, not merged.** Merging `permissions.allow` element-wise would make it impossible
 for a provider to *narrow* an inherited list, and there is no principled way to merge two arrays whose
-order matters. A provider that wants a different list states it in full.
+order matters. A provider that wants a different list states it in full. Recursion does not enter
+array elements: `{ "items": [{ "value": null }] }` preserves that `null` as data, as does a `null`
+array element.
 
 **`null` is the deletion marker.** A `null` in a record removes the inherited key; a `null` over an
 absent key is a no-op. `diff` keeps a `null` only where it deletes a real default — dropping that one
@@ -90,7 +92,8 @@ invariant `merge(d, diff(d, x)) == merge(d, x)`.
 
 The spec does not rely on examples for that. `tests/claude-settings-merge.spec.js` runs seeded
 randomized properties over thousands of generated pairs — the merge/diff invariant, idempotent `diff`,
-no `null` member in a merged result, every inherited path carrying the default's value, and no dropped
+no `null` member in objects participating in merge (excluding array contents), every inherited path
+carrying the default's value, and no dropped
 path appearing in the delta — alongside the hand-written cases. The generator is deterministic, so a
 failure prints a replayable case rather than being a flake. Mutating the built module (inverting the
 `null` rule, dropping differing scalars, letting `{}` clear) is caught each time.

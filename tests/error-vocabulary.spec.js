@@ -55,7 +55,27 @@ function sourceFiles(dir) {
 /**
  * A quoted `CLAUDE_`-prefixed string literal. See the test that uses it for why the quotes matter.
  */
-const QUOTED_CLAUDE_CODE = /["']CLAUDE_[A-Z_]+["']/;
+const QUOTED_CLAUDE_CODE = /["']CLAUDE_[A-Z_]+["']/g;
+
+/**
+ * Issue codes, which are a different namespace from error codes.
+ *
+ * An *issue* is a finding inside a successful `doctor` result: it is not type-checked against
+ * `ErrorCode`, it carries no exit code, and it is not a failure. The source grep below cannot tell
+ * the two namespaces apart — both are quoted string literals in `src/` — so the issue namespace is
+ * recorded here by name, the same ratchet `UNPRODUCED_CODES` is.
+ *
+ * Both surviving names keep their target prefix because each names a condition with no Codex twin
+ * to merge with, and the issue's own `target` field is what says whose. `CLAUDE_SETTINGS_INVALID`
+ * is raised when `settings.json` is there and cannot be read. `CLAUDE_DEFAULTS_INVALID` is raised
+ * when the shared tool config carries a `claudeDefaults` block that is not a settings object.
+ *
+ * A third name, `CLAUDE_SETTINGS_NOT_FOUND`, used to sit here. `1.1.3` retired it: an absent
+ * `settings.json` is a fact about the installation, not a fault, so nothing raises it any more and
+ * it must not stay recorded — a ratchet entry for a name nothing produces reserves the exemption
+ * for all time.
+ */
+const ISSUE_CODES = ["CLAUDE_DEFAULTS_INVALID", "CLAUDE_SETTINGS_INVALID"];
 
 module.exports = {
   name: "error vocabulary",
@@ -71,10 +91,15 @@ module.exports = {
         // and `"APS_CLAUDE_DIR"` does not start with `CLAUDE_`, so the environment variable needs
         // no exception at all.
         const offenders = [];
+        const seenIssues = new Set();
         for (const file of sourceFiles(SOURCE_ROOT)) {
           const source = fs.readFileSync(file, "utf8");
-          const match = source.match(QUOTED_CLAUDE_CODE);
-          if (match) {
+          for (const match of source.matchAll(QUOTED_CLAUDE_CODE)) {
+            const code = match[0].slice(1, -1);
+            if (ISSUE_CODES.includes(code)) {
+              seenIssues.add(code);
+              continue;
+            }
             offenders.push(`${path.relative(repoRoot, file)}: ${match[0]}`);
           }
         }
@@ -83,6 +108,14 @@ module.exports = {
           offenders,
           [],
           `an error code must name a condition, not a target: ${offenders.join(", ")}`
+        );
+
+        // The ratchet's other direction: a recorded issue code that no longer appears anywhere
+        // would silently widen the exemption for the name it reserves.
+        assert.deepEqual(
+          [...seenIssues].sort(),
+          [...ISSUE_CODES].sort(),
+          "every recorded issue code must still be used in src/"
         );
       },
     },
@@ -217,12 +250,15 @@ module.exports = {
       name: "a Claude success payload carries no target of its own",
       async run() {
         // The acceptance criterion for the one deliberate `--json` break: after this release the
-        // envelope's `target` is the only place the answer is written down.
+        // envelope's `target` is the only place the answer is written down. `matchState` and
+        // `activeProvider` are the identity answer said once for the whole list, which is what
+        // makes an ambiguous match expressible: a row can be a candidate without being claimed
+        // active, and no row at all can be when two candidates tie.
         const result = await runJsonCli({ args: ["list", "--claude", "--json"] });
         assert.equal(result.status, 0, result.stderr);
         assert.equal(result.payload.target, "claude");
         assert.equal(result.payload.data.target, undefined);
-        assert.deepEqual(Object.keys(result.payload.data), ["providers", "count"]);
+        assert.deepEqual(Object.keys(result.payload.data), ["providers", "count", "matchState", "activeProvider"]);
       },
     },
   ],

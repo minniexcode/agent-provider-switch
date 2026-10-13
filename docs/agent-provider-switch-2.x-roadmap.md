@@ -636,6 +636,14 @@ correctness problem is its silence, not its coverage.
 > "Merging into one `providers.json`" is still rejected, and for a stronger reason than the one
 > given here: the two records are structurally different (a flat record against a settings blob), so
 > a merged file needs a union type that makes every reader narrower rather than simpler.
+>
+> **The `1.1.x` line narrows two of these rows further, without overturning them.** `1.1.1` made the
+> target explicit (`--codex` names the default, the pair is refused, the envelope carries one), and
+> `1.1.3` made it a *scope* declared per command — one table in `src/domain/target.ts`, and three
+> commands that report on both targets at once. That is the `1.2.0` abstraction's first half arrived
+> early, on the terms this section set: the *scope* is shared, the per-target code paths are not, and
+> both stored file formats are untouched. A `--target <id>` flag is still rejected for this line; it
+> is `1.2.0`'s, because until the flags stop being booleans there is nothing for it to replace.
 
 | Not doing | Why |
 |---|---|

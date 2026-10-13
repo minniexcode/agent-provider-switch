@@ -4,9 +4,11 @@
 
 它把 `agent-provider-switch` 自己的工具状态和目标运行时目录分开，让 provider 管理、备份和运行时投影通过明确命令完成，而不是手工编辑文件。
 
-当前包版本：`1.1.2`
+当前包版本：`1.1.3`
 
-**`1.1.2` 是破坏性的 `--json` 变更。** 错误码不再携带 target 信息，因此五个 `CLAUDE_*` 错误码被并入 Codex 线早已使用的那几个，重复的 `data.target` payload 字段也被删除。每一次拒绝还是同一次拒绝，只是 code 字符串不同；退出码和消息文本都没有变化。见[迁移表](./CHANGELOG.md)，或者直接读 envelope 上的 `target` —— 现在由这个字段说明失败属于哪条线。
+**`1.1.3` 让 target 成为命令自身的属性，并带来三处破坏性变更。** `doctor`、`status`、`backups list` 现在一次运行同时报告两个 target，用 `--codex` / `--claude` 收窄；因此裸调用多 target 命令时 envelope 的 `target` 为 `null`，权威字段是 `targets`。`doctor` 不再报告你从未配置过的 target，`backups prune`、`rollback`、`unlock` 会拒绝两个 target flag，因为它们操作的是两个 target 共享的状态。见[迁移表](./CHANGELOG.md)。
+
+`1.1.2` 是破坏性的 `--json` 变更。错误码不再携带 target 信息，因此五个 `CLAUDE_*` 错误码被并入 Codex 线早已使用的那几个，重复的 `data.target` payload 字段也被删除。每一次拒绝还是同一次拒绝，只是 code 字符串不同；退出码和消息文本都没有变化。
 
 `1.1.1` 让 target 变成显式概念。每条命令默认作用于 Codex，除非用 `--claude` 指定；这个默认值现在有了名字：`--codex`。两者指向不同 target，不能同时使用，同时传入会被拒绝，而不是按优先级规则择一。JSON envelope 新增 `target` 字段——`"codex"`、`"claude"`，或在没有解析出命令时为 `null`——成功和失败都会写入。没有任何命令新增或失去 target。
 
@@ -83,7 +85,7 @@ aps show --claude copilot --reveal
 
 ```json
 {
-  "version": "1.1.2",
+  "version": "1.1.3",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -157,9 +159,26 @@ aps show --claude copilot --reveal
 chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/auth.json ~/.claude/settings.json
 ```
 
+## 同时覆盖两个 target
+
+`status`、`doctor`、`backups list` 一次运行同时覆盖两个 target，所以只用 Claude 的用户也有了自己的健康检查与状态报告。
+
+`aps doctor` 同时运行 Codex 与 Claude 两套检查，`--codex` / `--claude` 把它收窄到一个。由此有两条规则：
+
+- **你从未配置过的 target 不产生任何 finding，也不会让这次运行变成不健康。** `configured` 是一个 reading —— `{"status": "ok", "value": false}` 就是 payload 的表述方式；全新的工具 home 是健康的。证据必须是文件：注册表、真实的运行时配置文件，或 defaults 块。空目录什么也证明不了，所以因为别的东西而存在的 `~/.codex` 不算已配置，也不会随之产生任何"配置缺失"的 finding。
+- **`--claude` 不读取任何 Codex 文件，也不会运行 Codex CLI 探针。** 机器上没有 Codex CLI 时，不会被报告成 Codex 有问题。
+
+每条 finding 都会说明自己属于哪个 target。唯一例外是残留的锁：它只报告一次，`target` 为 `null`，因为一把锁会同时阻塞两个 target 的写入。正在被运行中的操作持有的锁则是一种状态而非 finding —— `{"status": "ok", "value": "busy"}` —— 因此后台跑一次 `aps` 不会让 `doctor` 断言安装已损坏。
+
+finding 与状态是两回事，报告把它们分开。有 issue 时 `healthy` 为 `false`，检查干净跑完时为 `true`，而无法完成、同时已跑的检查都没有发现故障时为 `null` —— 这与"检查过且一切正常"不是同一件事。target 区块里的每个字段都是 reading —— `{"status": "ok", "value": …}`、`absent`、`invalid` 或 `unavailable` —— 于是"没有这个文件"、"读不了这个文件"和"答案确实是零"是三种不同的 payload，而不是同一个 `null`。身份问题（当前实时配置指向哪个 provider）在每个 target 里只回答一次，位于 `matching`，它会枚举全部候选，而不是悄悄取第一个。
+
+`aps status --claude` 报告 Claude 注册表和当前的 `settings.json`，并且完全省略 Codex 字段。裸调用 `aps status` 则两者都报，此时 `target` 为 `null` —— 请读 envelope 上的 `targets`，它才是权威字段；只有恰有一个 target 在范围内时 `target` 才非空。
+
+`aps backups list` 给每条记录打上 `codex`、`claude`、`mixed` 或 `unknown` 标签，`--codex` / `--claude` 用于过滤列表。标签先看这次变更记录的 target，再看操作名，最后看被备份的文件位于哪个运行时目录 —— 所以 `1.1.3` 之前写入的备份同样能正确分类。无法分类的 manifest 会读作 `unknown`，而不是去猜，这是安全的方向：这个标签正是用来告诉你 `rollback` 将要恢复什么。`mixed` 同时含有两个 target 的文件，因此出现在两个收窄后的列表里；`unknown` 只出现在未过滤的列表中。
+
 ## 命令面
 
-`1.1.2` 当前命令：
+`1.1.3` 当前命令：
 
 ```text
 aps init
@@ -167,7 +186,7 @@ aps migrate
 aps list [--claude]
 aps show <provider> [--claude] [--reveal]
 aps current [--claude]
-aps status
+aps status [--codex] [--claude]
 aps config show
 aps config list-profiles
 aps config compact --claude [--dry-run]
@@ -178,11 +197,11 @@ aps switch <provider> [--claude]
 aps remove <provider> [--claude] --force
 aps import <file>
 aps export <file>
-aps backups list
+aps backups list [--codex] [--claude]
 aps backups prune [--keep N]
 aps unlock [--force]
 aps rollback [backup-id]
-aps doctor
+aps doctor [--codex] [--claude]
 aps setup
 ```
 
@@ -190,7 +209,19 @@ aps setup
 
 所有命令都接受 `--json` 标准 JSON envelope（以解析器支持为限），以及用于指定目标 Codex 目录的 `--codex-dir <path>`。`--codex-dir` 必须跟路径：紧随其后以 `-` 开头的 token 会被拒绝，而不是被当作路径。
 
-每条命令默认作用于 Codex，除非用 `--claude` 指定。`--codex` 是这个默认值的显式名字，两者互相矛盾：同时传入会以 `INVALID_ARGUMENT` 拒绝，而不是按优先级择一。凡是命令作用于 Codex 状态的地方都接受 `--codex`；唯一例外是 `aps config compact`，它改写的是 Claude provider 记录，因此会拒绝该 flag。
+每条命令默认作用于 Codex，除非用 `--claude` 指定。`--codex` 是这个默认值的显式名字，两者互相矛盾：同时传入会以 `INVALID_ARGUMENT` 拒绝，而不是按优先级择一。
+
+三条命令操作的是两个 target 共享的状态，对它们来说任何一个 flag 都不是更小的答案：`backups prune`、`rollback`、`unlock` 会拒绝两个 flag，并在拒绝信息里说明原因。`aps config compact` 是唯一没有 Codex 形态的命令，因此它要求 `--claude`，而不是接受它。
+
+| 命令 | target 范围 | flag 的含义 |
+|---|---|---|
+| `add`、`switch`、`list`、`show`、`current`、`remove` | 一个 | `--claude` 选择 Claude 代码路径；默认是 Codex |
+| `init`、`migrate`、`setup`、`edit`、`import`、`export`、`config show`、`config list-profiles` | Codex | `--claude` 被拒绝；`--codex` 被接受且不改变任何行为 |
+| `config compact` | Claude | 必须传 `--claude` |
+| `status`、`doctor`、`backups list` | 两个 | flag 收窄报告范围，而不是选择代码路径；裸调用表示两个都要 |
+| `backups prune`、`rollback`、`unlock` | 共享 | 两个 flag 都被拒绝 |
+
+在这三条双 target 命令上，`--codex-dir` 与 `--claude` 同时出现也会被拒绝：该目录本来就属于命令要报告的内容，指定它与收窄范围相矛盾。
 
 ## Runtime 投影
 
@@ -281,7 +312,7 @@ aps backups prune --keep 5
 
 ## 当前非目标
 
-`1.1.2` 不实现也不预留以下 runtime 代码路径：
+`1.1.3` 不实现也不预留以下 runtime 代码路径：
 
 - 创建或编辑 `claudeDefaults` 块的命令。它需要手工编写；块不存在时 `config compact` 会拒绝执行，而不是去猜哪些键是公共的。
 - Claude provider 记录的导出与导入。这两个命令只支持 Codex。
@@ -292,7 +323,8 @@ aps backups prune --keep 5
 - 内置第三方 router 封装。
 - 账号系统或云同步。
 - Claude Code 插件市场管理。
-- target *描述符* —— 一张声明每个 target 如何存储 provider、能做什么的表。`1.1.1` 命名并解析 target，两个 target 各自仍走手写代码路径。第三个 target 才是必须引入描述符的任务。
+- target *描述符* —— 一张声明每个 target 如何存储 provider、能做什么的表。`1.1.3` 声明了每条命令的 target 范围，也解析出一次调用覆盖哪些 target，但两个 target 各自仍走手写的代码路径、存储仓库和记录形状。第三个 target 才是必须引入描述符的任务，那是 `1.2.0` 的工作。
+- 第三个 target。`TargetId` 是两个值的封闭 union，新增一个是一次类型变更，会在每一个穷尽 switch 处编译失败 —— 这是刻意的形状，也是第三个 target 不会意外出现的原因。
 - `--target <id>` flag。target flag 只有 `--claude` 和 `--codex`。
 - 可插拔 provider 类型系统。
 - 基于 TTL 的锁接管。慢速 `migrate` 可以超过任何计时器，因此被复用的 pid 一律 fail-closed，出口是 `aps unlock --force`。
@@ -317,6 +349,8 @@ npm pack --dry-run
 
 ## 当前事实源
 
+- [PRD 1.1.3](./docs/PRD/agent-provider-switch-prd-v1.1.3.md)
+- [Design 1.1.3](./docs/Design/agent-provider-switch-v1.1.3-design.md)
 - [PRD 1.1.2](./docs/PRD/agent-provider-switch-prd-v1.1.2.md)
 - [Design 1.1.2](./docs/Design/agent-provider-switch-v1.1.2-design.md)
 - [PRD 1.1.1](./docs/PRD/agent-provider-switch-prd-v1.1.1.md)

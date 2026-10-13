@@ -30,9 +30,19 @@ export type ManagedProfileView = {
   source: "managed" | "unmanaged" | "orphaned-reference";
 };
 
+/**
+ * A projection inconsistency in an *activated* `config.toml`.
+ *
+ * There is no member for a missing top-level selector, and the absence is deliberate. A
+ * `config.toml` without `model_provider` is not a broken projection; it is a target nobody has
+ * switched yet, which `1.1.3` reports as the state `not-activated`. The member that used to carry
+ * that code was `MODEL_PROVIDER_MISSING`, and keeping it here — even unreachable — would leave the
+ * next caller one line away from telling a user who has never run `aps switch` that their Codex
+ * setup needs repair. The check exists at the call site instead: only an activated document reaches
+ * this function at all.
+ */
 export type ConfigConsistencyIssue =
   | { code: "MODEL_MISSING"; modelProvider: string }
-  | { code: "MODEL_PROVIDER_MISSING" }
   | { code: "MODEL_PROVIDER_SECTION_MISSING"; modelProvider: string }
   | { code: "MODEL_PROVIDER_BASE_URL_MISSING"; modelProvider: string }
   | { code: "LEGACY_PROFILE_SELECTOR"; profile: string }
@@ -429,9 +439,6 @@ export function collectConfigConsistencyIssues(
 
   if (!document.currentModel) {
     issues.push({ code: "MODEL_MISSING", modelProvider: activeModelProvider ?? "(none)" });
-  }
-  if (!document.currentModelProvider) {
-    issues.push({ code: "MODEL_PROVIDER_MISSING" });
   }
   if (document.legacyProfile) {
     issues.push({ code: "LEGACY_PROFILE_SELECTOR", profile: document.legacyProfile });

@@ -1,5 +1,4 @@
-import { mergeClaudeSettings } from "./claude-settings-merge";
-
+import { collectOrphanedDeletions, mergeClaudeSettings } from "./claude-settings-merge";
 /**
  * Claude Code provider definition stored in claude-providers.json.
  */
@@ -161,6 +160,131 @@ export function summarizeClaudeSettings(settings: Record<string, unknown>): {
     baseUrl: env?.ANTHROPIC_BASE_URL ?? null,
     theme: (settings.theme as string) ?? null,
   };
+}
+
+/**
+ * A finding about one stored Claude provider record.
+ *
+ * An *issue*, not an error: it describes a record that was read successfully and shapes a finding
+ * inside a successful `doctor` run. It carries no exit code and is not part of the `ErrorCode`
+ * vocabulary.
+ */
+export type ClaudeRecordIssue = {
+  code: "INVALID_CONFIG";
+  provider: string;
+  message: string;
+  paths?: string[];
+};
+
+/**
+ * Finds the stored records that would write a settings file Claude Code cannot use.
+ *
+ * One class, and only this one: **a field the tool itself reads has the wrong type.**
+ * `validateClaudeProvidersShape()` accepts any object as `settings`, so `env` or `model` can be a
+ * string or an array. The merge is total and would copy it verbatim, so `switch` would write it
+ * into `settings.json` and Claude Code would then read a shape it cannot use. These two are checked
+ * because they are the two the tool reads and writes; an unknown key is the user's business.
+ *
+ * **Checked against the effective settings, not the stored delta.** What `switch` writes is
+ * `resolveClaudeProviderRecord()`, so a stored member the merge deletes — `{"env": null}` over a
+ * defaults block that sets `env` — cannot be a bad type in the file the user ends up with. A
+ * `null` member is skipped outright: with a defaults block it is the deletion marker, and with no
+ * block it is plain data the record-writes-verbatim rule preserves on purpose.
+ *
+ * A record that merely overrides an inherited value is not reported: that is the normal case and
+ * the reason the record is a delta at all.
+ *
+ * A deletion marker that deletes nothing is *not* here. It is a note, not an issue — see
+ * {@link collectClaudeRecordNotes}.
+ */
+export function collectClaudeRecordIssues(
+  file: ClaudeProvidersFile,
+  defaults: Record<string, unknown> | null
+): ClaudeRecordIssue[] {
+  const issues: ClaudeRecordIssue[] = [];
+
+  for (const name of Object.keys(file.providers).sort()) {
+    const effective = resolveClaudeProviderRecord(file.providers[name], defaults).effective;
+
+    if (effective.env !== undefined && effective.env !== null && !isPlainObject(effective.env)) {
+      issues.push({
+        code: "INVALID_CONFIG",
+        provider: name,
+        paths: ["env"],
+        message: `Claude provider "${name}" has a non-object env; switching to it would write that value verbatim.`,
+      });
+    }
+    if (effective.model !== undefined && effective.model !== null && typeof effective.model !== "string") {
+      issues.push({
+        code: "INVALID_CONFIG",
+        provider: name,
+        paths: ["model"],
+        message: `Claude provider "${name}" has a non-string model; switching to it would write that value verbatim.`,
+      });
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * A finding about a stored Claude provider record that is worth telling the user and is not a fault.
+ *
+ * A *note*, not an issue: it does not make `doctor` report the run as unhealthy, and it carries no
+ * `INVALID_CONFIG`. The condition is real — the stored record carries something that does nothing —
+ * but nothing is broken, so failing the run over it would be a false alarm.
+ */
+export type ClaudeRecordNote = {
+  code: "REDUNDANT_DELETION_MARKER";
+  provider: string;
+  paths: string[];
+  message: string;
+};
+
+/**
+ * Finds the stored records carrying a deletion marker that deletes nothing.
+ *
+ * A record's `null` is an instruction about the defaults block, so it goes stale when the block
+ * changes. The user's intent is still satisfied — the key is absent from the effective settings
+ * either way, which is what they asked for — so this is not a fault and must not fail the run.
+ * What it is worth saying is that the marker now does nothing where it is read, and that
+ * `config compact --claude` will drop it: compacting keeps a `null` only where it deletes a real
+ * default.
+ *
+ * Reported only when a defaults block exists. With none, a `null` in a record is not a deletion
+ * marker at all — it is plain data preserved verbatim, and reporting it would be a finding about
+ * the record's storage rather than about anything that changed.
+ */
+export function collectClaudeRecordNotes(
+  file: ClaudeProvidersFile,
+  defaults: Record<string, unknown> | null
+): ClaudeRecordNote[] {
+  if (defaults === null) {
+    return [];
+  }
+
+  const notes: ClaudeRecordNote[] = [];
+  for (const name of Object.keys(file.providers).sort()) {
+    const orphaned = collectOrphanedDeletions(defaults, file.providers[name].settings);
+    if (orphaned.length === 0) {
+      continue;
+    }
+
+    notes.push({
+      code: "REDUNDANT_DELETION_MARKER",
+      provider: name,
+      paths: orphaned,
+      message:
+        `Claude provider "${name}" deletes ${orphaned.join(", ")}, which the shared defaults no longer set. ` +
+        `The key stays absent either way, so nothing is wrong; run \`config compact --claude\` to drop the marker.`,
+    });
+  }
+
+  return notes;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

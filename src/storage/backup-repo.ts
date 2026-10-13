@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { BackupManifest, FileBackupEntry } from "../domain/backup";
-import { sortBackupList, toBackupListItem, validateBackupManifest } from "../domain/backups";
+import { BackupRoots, sortBackupList, toBackupListItem, validateBackupManifest } from "../domain/backups";
+import type { TargetId } from "../domain/target";
 import { cliError, normalizeError } from "../domain/errors";
 import { SECURE_DIR_MODE, ensureDir, writeTextFileAtomic } from "./fs-utils";
 
@@ -12,11 +13,15 @@ const MAX_BACKUP_DIR_ATTEMPTS = 100;
 
 /**
  * Creates a point-in-time backup for the managed files involved in a mutation.
+ *
+ * `target` is written into the manifest so that a later `backups list` or `rollback` can name it
+ * without inferring it from an operation name or a file path.
  */
 export function createBackup(
   backupsDir: string,
   reason: string,
-  files: Array<{ absolutePath: string; relativePath: string }>
+  files: Array<{ absolutePath: string; relativePath: string }>,
+  target: TargetId
 ): BackupManifest {
   try {
     ensureDir(backupsDir);
@@ -44,6 +49,7 @@ export function createBackup(
       createdAt: new Date().toISOString(),
       reason,
       backupDir,
+      target,
       files: entries,
     };
 
@@ -158,8 +164,14 @@ export function loadManifestById(backupsDir: string, backupId: string): BackupMa
 
 /**
  * Lists valid backup manifests under backups/, newest first, while skipping corrupt entries with warnings.
+ *
+ * `roots` is what lets every entry be labelled with the target it belongs to; the directory itself
+ * is shared, so nothing about an entry's position on disk says which target wrote it.
  */
-export function listBackups(backupsDir: string): {
+export function listBackups(
+  backupsDir: string,
+  roots: BackupRoots
+): {
   backups: Array<ReturnType<typeof toBackupListItem>>;
   warnings: string[];
 } {
@@ -185,7 +197,9 @@ export function listBackups(backupsDir: string): {
     }
 
     try {
-      backups.push(toBackupListItem(validateBackupManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8")))));
+      backups.push(
+        toBackupListItem(validateBackupManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8"))), roots)
+      );
     } catch (error: unknown) {
       warnings.push(`Skipped backup "${entry.name}" because manifest.json is invalid: ${normalizeError(error).message}`);
     }

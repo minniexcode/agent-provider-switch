@@ -44,6 +44,7 @@ export async function claudeSwitchProvider(args: {
     backupsDir: args.backupsDir,
     latestBackupPath: args.latestBackupPath,
     operation: "claude-switch",
+    target: "claude",
     files: [
       { absolutePath: args.claudeSettingsPath, relativePath: "claude-settings.json" },
     ],

@@ -67,6 +67,7 @@ export async function claudeAddProvider(args: {
     backupsDir: args.backupsDir,
     latestBackupPath: args.latestBackupPath,
     operation: "claude-add",
+    target: "claude",
     files: [
       { absolutePath: args.claudeProvidersPath, relativePath: "claude-providers.json" },
     ],

@@ -36,7 +36,10 @@ export async function addProvider(args: {
   ensureDir(args.codexDir);
   const providers = readProvidersFileIfExists(args.providersPath);
   if (providers.providers[args.providerName]) {
-    throw cliError("INVALID_IMPORT_FILE", `Provider "${args.providerName}" already exists.`);
+    // `PROVIDER_ALREADY_EXISTS`, not `INVALID_IMPORT_FILE`: the condition is "a record with this
+    // name is taken", which is the same condition the Claude path reports under that code. The
+    // import code named the shape of the file rather than what was actually wrong.
+    throw cliError("PROVIDER_ALREADY_EXISTS", `Provider "${args.providerName}" already exists.`);
   }
 
   const document = readStructuredConfig(args.configPath);
@@ -96,6 +99,7 @@ export async function addProvider(args: {
     backupsDir: args.backupsDir,
     latestBackupPath: args.latestBackupPath,
     operation: "add",
+    target: "codex",
     files: [
       { absolutePath: args.providersPath, relativePath: "providers.json" },
       { absolutePath: args.configPath, relativePath: "config.toml" },

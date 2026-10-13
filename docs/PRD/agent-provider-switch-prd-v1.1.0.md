@@ -96,7 +96,10 @@ ignoring it would leave every provider with no inherited env and no message sayi
 ## Merge Rule
 
 Recursive deep merge; the record wins; arrays are replaced wholesale; `null` deletes an inherited key.
-The result never contains a `null` object member. A `null` default reads as absent.
+Object members participating in recursive merge treat `null` as deletion; a `null` default reads
+as absent. Arrays are copied wholesale, including `null` elements and `null` members inside their
+objects. For example, `{ "items": [{ "value": null }] }` retains that array content. Without a
+defaults block, the entire stored record is copied verbatim and `null` is ordinary data.
 
 Two consequences are documented because both are surprising:
 
@@ -159,7 +162,9 @@ preview.
 1. A hand-written `claudeDefaults` block survives a tool-config read and write; an absent block stays
    absent; a malformed block is `INVALID_CONFIG`.
 2. `merge(d, diff(d, x))` equals `merge(d, x)` over randomized inputs including `null`, `{}`, arrays,
-   and nested `env`; `diff` is idempotent; a merged result has no `null` object member.
+   and nested `env`; `diff` is idempotent. Objects participating in merge contain no `null` member;
+   arrays retain their contents, including `{ "items": [{ "value": null }] }`. A deletion of an
+   absent inherited key is a no-op.
 3. `switch --claude` writes the resolved settings while the stored record stays a delta. With no block
    a record is written verbatim, explicit `null` members included.
 4. `list`, `current`, `show`, and the interactive selector resolve a delta record, so the active marker

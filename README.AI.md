@@ -2,10 +2,12 @@
 
 This file is the current AI-facing fact sheet for `@minniexcode/agent-provider-switch`.
 
-Current repository version: `1.1.2`
+Current repository version: `1.1.3`
 
 Current fact sources:
 
+- `docs/PRD/agent-provider-switch-prd-v1.1.3.md`
+- `docs/Design/agent-provider-switch-v1.1.3-design.md`
 - `docs/PRD/agent-provider-switch-prd-v1.1.2.md`
 - `docs/Design/agent-provider-switch-v1.1.2-design.md`
 - `docs/PRD/agent-provider-switch-prd-v1.1.1.md`
@@ -30,13 +32,27 @@ Current fact sources:
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects Codex `model_provider` sections, writes the active top-level `model` / `model_provider` route, switches Claude Code `settings.json` profiles, and maintains backups around mutating commands.
 
-In `1.1.2`, there are two managed workflows:
+In `1.1.3`, there are two managed workflows:
 1. **Codex providers** — OpenAI-compatible provider records projected into `config.toml` / `auth.json`. This is the default target, and `--codex` names it explicitly.
 2. **Claude Code providers** (via `--claude` flag) — `settings.json` profiles stored as deltas over an optional shared `claudeDefaults` block, and switched atomically.
 
-The two targets are resolved once per invocation by `resolveTarget()` in `src/domain/target.ts`, which returns `"codex"`, `"claude"`, or a refusal. `--claude --codex` is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule. The resolved value is reported as `target` on every JSON envelope, success and failure alike.
+## Target Scope
 
-Error codes name a condition and never a target. `CLAUDE_PROVIDER_NOT_FOUND`, `CLAUDE_PROVIDERS_NOT_FOUND`, `CLAUDE_PROVIDERS_PARSE_ERROR`, and `CLAUDE_PROVIDER_ALREADY_EXISTS` were removed in `1.1.2` in favour of `PROVIDER_NOT_FOUND`, `PROVIDERS_NOT_FOUND`, `PROVIDERS_PARSE_ERROR`, and `PROVIDER_ALREADY_EXISTS`; `CLAUDE_SETTINGS_NOT_FOUND` was deleted as dead vocabulary. Messages still name the target where the state needs it (`Claude provider "x" was not found.`), and `PROVIDER_ALREADY_EXISTS` (a record name is taken) stays distinct from `PROVIDERS_ALREADY_EXISTS` (the registry file exists). A Claude payload carries no `target` of its own — the envelope's is the only copy.
+`src/domain/target.ts` holds `TARGET_SCOPES`, one entry per command id, and it is the only place the answer lives:
+
+- `switchable` (`add`, `switch`, `list`, `show`, `current`, `remove`) — two code paths; `--claude` picks one and Codex is the default.
+- `codex-only` (`init`, `migrate`, `setup`, `edit`, `import`, `export`, `config show`, `config list-profiles`) — `--claude` is refused, `--codex` is accepted and changes nothing.
+- `claude-only` (`config compact`) — `--claude` is required, and the command routes to the Claude handler whether or not the flag is present.
+- `both` (`status`, `doctor`, `backups list`) — reports on both targets; a flag narrows the report rather than choosing a code path.
+- `shared` (`backups prune`, `rollback`, `unlock`) — one backups tree, one pointer, one lock; both flags are refused.
+
+Scope and routing are different questions. `acceptsTargetFlag(c, "--claude")` is true for `switchable`, `claude-only`, and `both`; `routesToClaudeHandler(c)` is true only for the first two, because no Claude handler could produce the whole answer for a `both` command. `isClaudeCommand()` in `src/commands/claude-handlers.ts` delegates to the latter.
+
+`selectedTargets(command, options)` returns the target list for an invocation: `["codex"]`, `["claude"]`, `[...TARGET_IDS]` for a bare `both` command, or `[]` for `shared`. `--claude --codex` is refused with `INVALID_ARGUMENT` by `resolveTarget()` before any handler runs, rather than resolved by a precedence rule.
+
+The envelope carries `targets` (authoritative) and `target` (`singleTarget(targets)`, non-null exactly when one target is in scope). On a bare multi-target command `target` is `null`; on a refusal raised by the flags it is `null` and `targets` is `[]`. On a `both` command `--codex-dir` together with `--claude` is refused.
+
+Error codes name a condition and never a target. `CLAUDE_PROVIDER_NOT_FOUND`, `CLAUDE_PROVIDERS_NOT_FOUND`, `CLAUDE_PROVIDERS_PARSE_ERROR`, and `CLAUDE_PROVIDER_ALREADY_EXISTS` were removed in `1.1.2` in favour of `PROVIDER_NOT_FOUND`, `PROVIDERS_NOT_FOUND`, `PROVIDERS_PARSE_ERROR`, and `PROVIDER_ALREADY_EXISTS`; `CLAUDE_SETTINGS_NOT_FOUND` was deleted as dead vocabulary, and `1.1.3` leaves it deleted: an absent `settings.json` is the `not-activated` state rather than a diagnosis, so no code names it. Messages still name the target where the state needs it (`Claude provider "x" was not found.`), and `PROVIDER_ALREADY_EXISTS` (a record name is taken) stays distinct from `PROVIDERS_ALREADY_EXISTS` (the registry file exists). A Claude payload carries no `target` of its own — the envelope's is the only copy.
 
 ## Primary Workflow (Codex)
 
@@ -89,7 +105,7 @@ migrate
 list [--claude]
 show [--claude] [--reveal]
 current [--claude]
-status
+status [--codex] [--claude]
 config show
 config list-profiles
 config compact --claude [--dry-run]
@@ -99,17 +115,27 @@ switch [--claude]
 remove [--claude]
 import
 export
-backups list
+backups list [--codex] [--claude]
 backups prune [--keep N]
 unlock [--force]
 rollback
-doctor
+doctor [--codex] [--claude]
 setup
 ```
 
 `setup` is deprecated and only points callers to `init` or `migrate`.
 
-`--claude` is accepted only by `add`, `switch`, `list`, `show`, `current`, `remove`, and `config compact`. On any other command it is refused with `INVALID_ARGUMENT` naming the supported set, rather than silently reported as Codex state.
+`--claude` is accepted by `add`, `switch`, `list`, `show`, `current`, `remove`, `config compact`, and the three two-target commands `status`, `doctor`, and `backups list`. On any other command it is refused with `INVALID_ARGUMENT` naming the supported set, rather than silently reported as Codex state. `backups prune`, `rollback`, and `unlock` refuse both target flags with a different sentence, because they act on state the targets share.
+
+## Reporting On Both Targets
+
+`doctor` and `status` compose their payload from `ctx.targets`. An out-of-scope target is not read at all: `aps doctor --claude` never reads `config.toml` and never runs the Codex CLI probe. An in-scope but unconfigured target contributes no issue and does not affect `healthy`; `configured` is a reading whose evidence is a file — the registry, an actual runtime configuration file, or a defaults block — because an empty directory proves nothing. Every `doctor` issue carries a `target`, except the lock check, which is inspected once and reported with `target: null`. A lock held by a live process is `{status: "ok", value: "busy"}` and no finding.
+
+`doctor` and `status` publish the same section shape per target, in the same vocabulary: every field is a `Reading<T>` — `{status: "ok", value}`, `absent`, `invalid`, or `unavailable` — and the identity answer is `matching`, which is `not-activated`, `unmanaged`, `managed`, or `ambiguous` with every candidate and its `differencePaths` (paths only, never values). `healthy` is three-valued: `false` with an issue, `true` when the checks completed cleanly, `null` when they could not be completed and nothing that ran found a fault. `complete` says whether every planned reading was obtainable. Codex's projection fields — `currentModel`, `currentModelProvider`, `liveState`, `configProfiles`, `artifacts` — live inside `data.codex`; Claude's `settingsStatus`, `settingsInvalidReason`, and `providers` rows live inside `data.claude`.
+
+`status --claude` carries `data.claude` and no Codex fields; `status --codex` carries the Codex fields and no `claude`. `data.claude.providers[].inherited` is a list of dotted paths — paths only, never values.
+
+`backups list` entries carry `target`: `codex`, `claude`, `mixed`, or `unknown`. Classification order is `manifest.target` → a `claude-` operation prefix → a known Codex operation name → artifact names and containment in the Claude directory, then the Codex directory. The tool home decides nothing, because `claude-providers.json` lives there and the classification is never a guess: an unclassifiable manifest reads `unknown`. Narrowed listings include `mixed` in both and `unknown` in neither. `rollback` reports the targets its restore paths overwrote under `data.targets`, beside `data.impact` (`{shared, unknown}`), which separates shared-only recovery from paths that could not be attributed — a `targets: []` alone cannot.
 
 `--full` and `--dry-run` are global boolean flags in the parser but are refused with `INVALID_ARGUMENT` anywhere they would be ignored: `--full` applies only to `add --claude`, `--dry-run` only to `config compact --claude`. The check runs before the Claude early-return, so `switch --claude --full` is refused too. Accepted-and-ignored is the dangerous reading — `aps backups prune --dry-run` would otherwise delete real backups under a flag that promised a preview.
 
@@ -163,7 +189,7 @@ Every write command takes one lock (`<toolHome>/.aps.lock`, shared by both targe
 
 ## Current Non-Goals
 
-`1.1.2` does not include:
+`1.1.3` does not include:
 
 - A command that creates or edits the `claudeDefaults` block.
 - Export or import of Claude provider records (both commands are Codex-only).
@@ -174,7 +200,8 @@ Every write command takes one lock (`<toolHome>/.aps.lock`, shared by both targe
 - Built-in third-party router packaging.
 - Account systems or cloud sync.
 - Claude Code plugin marketplace management.
-- A target descriptor — a table declaring how each target stores providers and what it can do. The target is named and resolved, but each target still has its own hand-written code path. A third target is the task that forces the descriptor.
+- A target descriptor — a table declaring how each target stores providers and what it can do. Each command's target *scope* is declared and the targets an invocation covers are resolved, but each target still has its own hand-written code path, storage repositories, and record shapes. A third target is the task that forces the descriptor, and it is `1.2.0`'s job.
+- A third target. `TargetId` is a closed union of two, so adding one is a type change that fails at every exhaustive switch.
 - A `--target <id>` flag. `--claude` and `--codex` are the only target flags.
 - A pluggable provider type system.
 - Field-based Claude provider creation (only `--from-file` import is supported).

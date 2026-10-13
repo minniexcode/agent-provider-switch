@@ -93,8 +93,12 @@ module.exports = {
         assert.match(missingHuman.stderr, /Provider "ghost" was not found\./);
 
         // A second add under the same name, and an edit of a name that is not registered.
+        //
+        // The code is the one the Claude path already used for the same condition. It was
+        // `INVALID_IMPORT_FILE` here, which named the shape of the file rather than what was
+        // wrong, and left "a record with this name is taken" with two codes depending on target.
         const duplicate = runFail(sandbox, ["add", "gamma", "--profile", "gamma", "--model", "gpt-5", "--api-key", "sk-x", "--json"]);
-        assert.equal(duplicate.json.error.code, "INVALID_IMPORT_FILE");
+        assert.equal(duplicate.json.error.code, "PROVIDER_ALREADY_EXISTS");
         assert.match(duplicate.json.error.message, /already exists/);
 
         const editMissing = runFail(sandbox, ["edit", "ghost", "--note", "x", "--json"]);

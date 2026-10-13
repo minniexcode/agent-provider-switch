@@ -1,5 +1,6 @@
 import type { TargetId } from "../domain/target";
 import type { AgentProviderSwitchConfig } from "../storage/codex-paths";
+import type { ToolConfigInspection } from "../app/inspect-tool-config";
 
 /**
  * Global flags that apply to every CLI command.
@@ -57,21 +58,44 @@ export type CommandExecutionContext = {
   command: CommandId | "help" | "version";
   options: GlobalOptions;
   /**
-   * The target this invocation names, resolved once by `executeCommand`.
+   * The targets this invocation covers, resolved once by `executeCommand`.
    *
-   * Required, with an explicit `null` rather than an optional field, so every construction site
-   * states its answer instead of defaulting to `undefined` — the same convention `restoreManifest`'s
-   * allowlist and the Claude services' `defaults` argument follow. `null` means "no command
-   * resolved": the help, version, and pre-dispatch failure paths built in `cli.ts` all pass it,
-   * and they must, because those never reach dispatch to have it filled in.
+   * Required rather than optional, so every construction site states its answer instead of
+   * defaulting to `undefined` — the same convention `restoreManifest`'s allowlist and the Claude
+   * services' `defaults` argument follow. `[]` means "no command resolved": the help, version, and
+   * pre-dispatch failure paths built in `cli.ts` all pass it, and they must, because those never
+   * reach dispatch to have it filled in.
+   *
+   * A list rather than `1.1.1`'s single `target`, because a command may cover two targets at once
+   * (`doctor`, `status`, `backups list` report both unless narrowed). The envelope's singular
+   * `target` is derived from this by `singleTarget()`, so the two can never disagree.
    */
-  target: TargetId | null;
+  targets: TargetId[];
   /**
    * The parsed tool config, set by `executeCommand` from the read it already performs for
    * `defaultCodexDir`. Absent when no tool config exists, and absent in any context built
    * outside dispatch, so consumers treat it as optional.
    */
   toolConfig?: AgentProviderSwitchConfig | null;
+  /**
+   * The reporting-safe inspection of the shared tool config, set by `executeCommand` for the
+   * commands that report rather than mutate.
+   *
+   * Both readers exist because the two callers want opposite things from a broken file: `switch`
+   * must refuse to write a delta against defaults it could not read, while `doctor` has to say what
+   * it could not read and keep going. `toolConfig` above stays the strict one for the mutation
+   * path; this is the field the report builders consume.
+   */
+  toolConfigInspection?: ToolConfigInspection;
+  /**
+   * Set by `executeCommand` when the Codex directory cannot be determined without guessing —
+   * the shared config is unreadable and neither `--codex-dir` nor `APS_CODEX_DIR` named one.
+   *
+   * A non-null value means the runtime-derived readings of a report are `unavailable` and the
+   * `~/.codex` fallback must not be used. The tool-home registry path is unaffected: it does not
+   * come from the shared config.
+   */
+  codexDirUnavailableReason?: string | null;
 };
 
 export type CommandGroup = "read" | "write" | "recovery";

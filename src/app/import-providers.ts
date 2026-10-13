@@ -41,6 +41,7 @@ export function importProviders(args: {
     backupsDir: args.backupsDir,
     latestBackupPath: args.latestBackupPath,
     operation: "import",
+    target: "codex",
     files: [
       { absolutePath: args.providersPath, relativePath: "providers.json" },
       { absolutePath: args.configPath, relativePath: "config.toml" },

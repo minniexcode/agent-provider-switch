@@ -78,13 +78,22 @@ size reviewable: `1.2.0` can assert "every existing spec passes unmodified", whi
 
 ## 3. The `1.1.x` line
 
-Three releases, all planned, each with a PRD and a Design document.
+Three target-related stages after `1.1.0`, each with a PRD and a Design document. The final reviewed
+rules are normative; implementation alignment and verification are tracked separately in
+[the 1.1.x review](Reviews/agent-provider-switch-1.1.x-prd-review.md).
 
 | Release | Subject | PRD | Design |
 |---|---|---|---|
 | `1.1.1` | The target becomes explicit: `--codex`, one `resolveTarget()`, `target` on the envelope. Additive. | `docs/PRD/agent-provider-switch-prd-v1.1.1.md` | `docs/Design/agent-provider-switch-v1.1.1-design.md` |
-| `1.1.2` | One error vocabulary: five codes merged, renamed, or deleted; `data.target` removed. The line's only contract break. | `…prd-v1.1.2.md` | `…v1.1.2-design.md` |
+| `1.1.2` | One error vocabulary: five codes merged, renamed, or deleted; `data.target` removed. Declared error/payload contract changes. | `…prd-v1.1.2.md` | `…v1.1.2-design.md` |
 | `1.1.3` | The six shared-state commands report both targets; a scope table replaces three ad-hoc decisions. | `…prd-v1.1.3.md` | `…v1.1.3-design.md` |
+
+The reviewed line accepts breaking changes for the author's single-user CLI. `1.1.2` changes
+error codes and removes `data.target`; `1.1.3` adds authoritative envelope `targets`, changes
+the bare `target` alias for six commands, rejects target flags on shared commands, and makes
+diagnostic availability and identity ambiguity explicit. New optional manifest metadata is a
+stored-shape addition; older valid backups remain readable without migration. No release promises
+to be the line's only contract break.
 
 **The endpoint of this line is a split.** At `1.1.3` the target is a first-class value everywhere it
 is *observed* — the JSON envelope, the error vocabulary, diagnostics, backups, and the flag
@@ -92,8 +101,8 @@ guards — and nowhere it is *implemented*. The storage repositories, record sch
 rules, and app services are still two independent copies, and a third target would still mean
 writing all of them.
 
-That split is deliberate. `1.1.x` is small, additive (except for the one declared break), and
-testable against the existing suite. `1.2.0` is the release that spends the seam.
+That split is deliberate. `1.1.x` keeps per-target implementation while making observed scope
+explicit. Contract changes require corresponding regression assertions in the suite. `1.2.0` is the release that spends the seam.
 
 ## 4. `1.2.0` — the target descriptor
 
@@ -183,7 +192,7 @@ The rest are independent and can land in any minor release.
 | Merging both registries into one `providers.json` | Rejected | Still rejected. The records are structurally different; a merged file needs a union type. |
 | Re-introducing the copilot-sdk, HTTP bridge, or proxy runtime | Rejected | Still rejected. |
 | An exit-code taxonomy beyond `0` / `1` | Rejected, no consumer | Still rejected. |
-| Codex `show --json` emitting the full `apiKey` | Decided: keep, it is a documented automation contract | Unchanged. `1.1.2` is the line's only contract break and it does not touch this. |
+| Codex `show --json` emitting the full `apiKey` | Decided: keep, it is a documented automation contract | Unchanged. The reviewed `1.1.x` changes do not alter this show/export contract. |
 | `--reveal` as a global flag | Decided | Unchanged. |
 | Automatic backup retention after every mutation | Decided | Unchanged since `0.4.1`. |
 

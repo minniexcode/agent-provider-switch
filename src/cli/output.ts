@@ -1,6 +1,6 @@
 import { CliErrorShape } from "../domain/errors";
 import { isSecretKey, maskSecret } from "../domain/secrets";
-import type { TargetId } from "../domain/target";
+import { scopeOfName, singleTarget, type TargetId } from "../domain/target";
 import { printErrorDetails } from "../storage/fs-utils";
 import { CommandResult } from "../app/types";
 import { CommandExecutionContext } from "../commands/types";
@@ -9,7 +9,16 @@ export type JsonEnvelope = {
   ok: boolean;
   command: string;
   /**
-   * The target this invocation named, or `null` when no command resolved.
+   * The targets this invocation covers, or `[]` when no command resolved. **Authoritative.**
+   *
+   * A list because a command may cover two: `aps doctor --json` answers with both targets, and
+   * `--claude` or `--codex` narrows it to one. Before `1.1.3` this was a single value, which was
+   * accurate while every target-aware command was single-target.
+   */
+  targets: TargetId[];
+  /**
+   * The single target when exactly one is covered, otherwise `null`. A convenience alias for
+   * `targets[0]`, derived from it rather than resolved separately, so the two cannot disagree.
    *
    * Written on both the success and the failure path, which is what makes it readable without
    * correlating `command` against an error code. That matters most for failures: before this
@@ -18,7 +27,7 @@ export type JsonEnvelope = {
    *
    * This is the only place a payload states its target. `data.target` used to carry a second copy,
    * written by hand in each Claude service, and was removed in `1.1.2` — the envelope is written
-   * once from the resolved target, so a service cannot disagree with it.
+   * once from the resolved targets, so a service cannot disagree with it.
    */
   target: TargetId | null;
   data: Record<string, unknown> | null;
@@ -41,7 +50,8 @@ export function renderSuccess(ctx: CommandExecutionContext, result: CommandResul
     const payload: JsonEnvelope = {
       ok: true,
       command: ctx.command,
-      target: ctx.target,
+      targets: ctx.targets,
+      target: singleTarget(ctx.targets),
       data: result.data,
       warnings,
       error: null,
@@ -55,7 +65,7 @@ export function renderSuccess(ctx: CommandExecutionContext, result: CommandResul
   }
 
   return {
-    stdout: renderHumanSuccess(ctx.target, ctx.command, result.data, warnings),
+    stdout: renderHumanSuccess(ctx, result.data, warnings),
     stderr: [],
     exitCode: 0,
   };
@@ -69,7 +79,8 @@ export function renderFailure(ctx: CommandExecutionContext, error: CliErrorShape
     const payload: JsonEnvelope = {
       ok: false,
       command: ctx.command,
-      target: ctx.target,
+      targets: ctx.targets,
+      target: singleTarget(ctx.targets),
       data: null,
       warnings: [],
       error,
@@ -92,21 +103,26 @@ export function renderFailure(ctx: CommandExecutionContext, error: CliErrorShape
 /**
  * Builds the plain-text success view for interactive terminal usage.
  *
- * The target is the resolved one rather than a payload field. The Claude services used to write
+ * The targets are the resolved ones rather than payload fields. The Claude services used to write
  * their own `target: "claude"` into `data`, and this renderer read that until `1.1.1`; switching to
- * the resolved target is what made the payload's copy removable, because at the moment it was
+ * the resolved targets is what made the payload's copy removable, because at the moment it was
  * deleted it had no reader left inside the repository. `data` is nullable here rather than because
  * of that change — a resolved Claude target no longer implies a non-null payload.
+ *
+ * The Claude view is reached from the routing question, not from the target list alone: a `both`
+ * command narrowed with `--claude` covers only Claude and must still render its own view, because
+ * `renderClaudeHumanSuccess` knows nothing about diagnostics.
  */
 function renderHumanSuccess(
-  target: TargetId | null,
-  command: string,
+  ctx: CommandExecutionContext,
   data: Record<string, unknown> | null,
   warnings: string[]
 ): string[] {
   const lines: string[] = [];
+  const command = ctx.command;
+  const scope = scopeOfName(command);
 
-  if (target === "claude") {
+  if (ctx.targets.length === 1 && ctx.targets[0] === "claude" && (scope === "switchable" || scope === "claude-only")) {
     return renderClaudeHumanSuccess(command, data ?? {}, warnings);
   }
 
@@ -165,18 +181,54 @@ function renderHumanSuccess(
         lines.push(`Managed provider: ${String(data.provider)}`);
       }
       break;
-    case "status":
-      lines.push("Status summary:");
-      lines.push(`  target runtime: ${String(data?.codexDir ?? "")}`);
-      lines.push(`  tool home: ${String(data?.toolHomeRoot ?? "")}`);
-      lines.push(`  current model: ${String(data?.currentModel ?? "(none)")}`);
-      lines.push(`  current model provider: ${String(data?.currentModelProvider ?? "(none)")}`);
-      lines.push(`  mapped provider: ${renderStatusMappedProvider(data)}`);
-      lines.push(`  provider path: ${renderStatusProviderPath(data)}`);
-      lines.push(`  runtime health: ${renderStatusHealth(data)}`);
-      lines.push(`  warnings: ${warnings.length}`);
-      lines.push(`  next step: ${renderStatusNextStep(data, warnings)}`);
+    case "status": {
+      // A narrowed `status` omits the other target's block, which is what makes `targets` more
+      // than decoration: the sections are composed by the handler from the selected targets.
+      const codex = data?.codex as Record<string, unknown> | undefined;
+      const claude = data?.claude as Record<string, unknown> | undefined;
+
+      if (codex) {
+        const paths = okValue<Record<string, string>>(codex.paths);
+        lines.push("Status summary:");
+        lines.push(`  target runtime: ${paths?.codexDir ?? "(unknown)"}`);
+        lines.push(`  tool home: ${String(data?.toolHomeRoot ?? "")}`);
+        lines.push(`  current model: ${String(codex.currentModel ?? "(none)")}`);
+        lines.push(`  current model provider: ${String(codex.currentModelProvider ?? "(none)")}`);
+        lines.push(`  mapped provider: ${renderStatusMappedProvider(codex)}`);
+        lines.push(`  provider path: ${renderStatusProviderPath(codex)}`);
+        lines.push(`  runtime health: ${renderStatusHealth(codex)}`);
+        lines.push(`  warnings: ${warnings.length}`);
+        lines.push(`  next step: ${renderStatusNextStep(data, warnings)}`);
+      }
+      if (claude) {
+        // The tool home is the only field both blocks would print, so the narrowed Claude view
+        // carries it and the combined view leaves it to the Codex block above.
+        if (!codex) {
+          lines.push("Status summary:");
+          lines.push(`  tool home: ${String(data?.toolHomeRoot ?? "")}`);
+        }
+        lines.push("Claude summary:");
+        lines.push(`  claude dir: ${okValue<Record<string, string>>(claude.paths)?.claudeDir ?? "(unknown)"}`);
+        lines.push(`  providers registry: ${renderReading(claude.registry, (value) => `${(value as { providerCount: number }).providerCount} record(s)`)}`);
+        lines.push(`  settings: ${renderReading(claude.live, () => "present")}`);
+        lines.push(`  configured: ${renderReading(claude.configured, (value) => String(value))}`);
+        lines.push(`  activation: ${renderReading(claude.activation, (value) => String(value))}`);
+        lines.push(`  providers: ${renderCountReading(claude.providerCount)}`);
+        lines.push(`  active provider: ${renderClaudeActiveProvider(claude.matching)}`);
+      }
+
+      // The summary lines are the same for either target and are printed once, under the blocks.
+      lines.push(`  health: ${renderHealth(data?.healthy, data?.complete)}`);
+      const statusIssues = (data?.issues as Array<Record<string, unknown>>) ?? [];
+      const statusNotes = (data?.notes as Array<Record<string, unknown>>) ?? [];
+      for (const issue of statusIssues) {
+        lines.push(`  issue [${String(issue.target ?? "shared")}] ${String(issue.code)}: ${String(issue.message)}`);
+      }
+      for (const note of statusNotes) {
+        lines.push(`  note [${String(note.target ?? "shared")}] ${String(note.code)}: ${String(note.message)}`);
+      }
       break;
+    }
     case "config-show": {
       lines.push(`currentModel: ${String(data?.currentModel ?? "")}`);
       lines.push(`currentModelProvider: ${String(data?.currentModelProvider ?? "")}`);
@@ -245,20 +297,48 @@ function renderHumanSuccess(
       }
       break;
     case "doctor": {
-      const healthy = Boolean(data?.healthy);
       const issues = (data?.issues as Array<Record<string, unknown>>) ?? [];
-      lines.push(healthy ? "Doctor summary: healthy. No action required." : `Doctor summary: ${issues.length} issue(s) need attention.`);
-      lines.push(`target runtime: ${String(data?.codexDir ?? "")}`);
+      // `healthy` is three-valued, and the third value must not read as either of the other two:
+      // "unknown" is what a run says when it could not complete its checks, and printing it as
+      // "healthy" would be the claim the field exists to avoid making.
+      const healthy = data?.healthy;
+      const summary =
+        healthy === false
+          ? `${issues.length} issue(s) need attention`
+          : healthy === true
+            ? "healthy. No action required"
+            : "incomplete: some checks could not be performed, and none that ran found a fault";
+      lines.push(`Doctor summary: ${summary}.`);
+      lines.push(`  complete: ${String(data?.complete ?? false)}`);
+      lines.push(`  shared lock: ${renderReading((data?.shared as Record<string, unknown> | undefined)?.lock, (value) => String(value))}`);
+      const codex = data?.codex as Record<string, unknown> | undefined;
+      if (codex) {
+        lines.push(`target runtime: ${okValue<Record<string, string>>(codex.paths)?.codexDir ?? "(unknown)"}`);
+      }
+      // The target is named only when more than one is in scope. A narrowed run has nothing to
+      // disambiguate, and its lines stay exactly as `1.1.2` rendered them.
+      const labelTargets = ctx.targets.length > 1;
       for (const issue of issues) {
-        lines.push(`- ${String(issue.code)}: ${String(issue.message)}`);
+        const label = labelTargets ? `[${String(issue.target ?? "shared")}] ` : "";
+        lines.push(`- ${label}${String(issue.code)}: ${String(issue.message)}`);
         lines.push(`  next step: ${renderDoctorIssueNextStep(issue)}`);
+      }
+      // Printed after the issues, and under their own heading, because they are not something to
+      // act on and must not read as part of the count above them.
+      const notes = (data?.notes as Array<Record<string, unknown>>) ?? [];
+      if (notes.length > 0) {
+        lines.push(`${notes.length} note(s), nothing to fix:`);
+        for (const note of notes) {
+          const label = labelTargets ? `[${String(note.target ?? "shared")}] ` : "";
+          lines.push(`- ${label}${String(note.code)}: ${String(note.message)}`);
+        }
       }
       break;
     }
     case "backups-list": {
       const backups = (data?.backups as Array<Record<string, unknown>>) ?? [];
       for (const backup of backups) {
-        lines.push(`${backup.backupId} ${backup.reason} ${backup.createdAt}`);
+        lines.push(`${backup.backupId} ${backup.reason} ${String(backup.target)} ${backup.createdAt}`);
       }
       break;
     }
@@ -295,9 +375,23 @@ function renderHumanSuccess(
       }
       break;
     }
-    case "rollback":
+    case "rollback": {
       lines.push(`Rollback restored files from ${String(data?.backupPath ?? "")}.`);
+      // Which targets the backup touched, which is not the same question as which target this
+      // invocation named: `rollback` is a shared command and names none. `targets` alone cannot say
+      // "only shared state" and "nothing classifiable" apart — both are the empty list — so the
+      // impact flags are printed beside it rather than left to the JSON.
+      const restored = Array.isArray(data?.targets) ? (data.targets as string[]) : [];
+      const impact = (data?.impact as { shared?: boolean; unknown?: boolean } | undefined) ?? {};
+      lines.push(`  restored targets: ${restored.length > 0 ? restored.join(", ") : "none"}`);
+      if (impact.shared) {
+        lines.push("  shared state was restored; neither target's runtime files were overwritten.");
+      }
+      if (impact.unknown) {
+        lines.push("  some restored paths could not be attributed to a target.");
+      }
       break;
+    }
     default:
       lines.push(JSON.stringify(data, null, 2));
       break;
@@ -312,28 +406,132 @@ function renderHumanSuccess(
 }
 
 /**
- * Summarizes runtime health for the human-readable status output.
+ * The value inside an `ok` reading, or `null` for any of the three other states.
+ *
+ * The renderer's counterpart to `valueOf()` in the domain: it collapses the tag because a human
+ * line has room for one answer, and the callers below are the places where that is the right
+ * trade. Anything that has to explain *why* a reading did not resolve uses {@link renderReading}.
  */
-function renderStatusHealth(data: Record<string, unknown> | null): string {
-  const configExists = Boolean(data?.configExists);
-  const providersExists = Boolean(data?.providersExists);
-  const auth = (data?.auth as Record<string, unknown> | undefined) ?? {};
-  const issues = Array.isArray(data?.issues) ? (data?.issues as Array<Record<string, unknown>>) : [];
-  const activeProviderResolvable = data?.activeProviderResolvable !== false;
-  const liveState = (data?.liveState as Record<string, unknown> | undefined) ?? {};
-  if (!configExists || !providersExists) {
-    return "incomplete local state";
+function okValue<T>(reading: unknown): T | null {
+  const tagged = reading as { status?: string; value?: T } | undefined;
+  return tagged?.status === "ok" ? (tagged.value as T) : null;
+}
+
+/**
+ * Prints one reading the way a human reads it: the value, or the state and its reason.
+ *
+ * `absent` prints as the word rather than as an empty value, which is the whole point of the
+ * vocabulary reaching the terminal: a missing `settings.json` and an unreadable one are different
+ * repairs, and both differ from a file that is there and says nothing.
+ */
+function renderReading(reading: unknown, render: (value: unknown) => string): string {
+  const tagged = reading as { status?: string; value?: unknown; reason?: string } | undefined;
+  switch (tagged?.status) {
+    case "ok":
+      return render(tagged.value);
+    case "absent":
+      return "absent";
+    case "invalid":
+      return `invalid (${tagged.reason ?? "unusable"})`;
+    case "unavailable":
+      return `unavailable (${tagged.reason ?? "could not be read"})`;
+    default:
+      return "not reported";
   }
-  if (!activeProviderResolvable || liveState.reason === "shared-profile") {
+}
+
+/**
+ * A count reading, where the distinction between a real zero and an unobtainable count matters.
+ */
+function renderCountReading(reading: unknown): string {
+  return renderReading(reading, (value) => `${String(value)}`);
+}
+
+/**
+ * The health line, which has three outcomes and prints all three apart.
+ */
+function renderHealth(healthy: unknown, complete: unknown): string {
+  if (healthy === false) {
+    return "unhealthy";
+  }
+  if (healthy === true) {
+    return "healthy";
+  }
+  return `unknown (report ${complete === false ? "incomplete" : "complete"})`;
+}
+
+/**
+ * Names the active Claude provider, or the state that stands in for one.
+ *
+ * Ambiguous is spelled out with its candidates rather than resolved to the first of them: the
+ * match found several, and picking one here would be the renderer inventing a fact the report
+ * deliberately withheld.
+ */
+function renderClaudeActiveProvider(matching: unknown): string {
+  const match = okValue<{ state: string; activeProvider: string | null; candidates: Array<{ name: string }> }>(matching);
+  if (!match) {
+    return renderReading(matching, () => "(none)");
+  }
+  switch (match.state) {
+    case "managed":
+      return match.activeProvider ?? "(none)";
+    case "ambiguous":
+      return `(ambiguous: ${match.candidates.map((candidate) => candidate.name).join(", ")})`;
+    case "not-activated":
+      return "(not activated)";
+    default:
+      return "(unmanaged or unresolved)";
+  }
+}
+
+/**
+ * Summarizes runtime health for the human-readable status output.
+ *
+ * Read from the section's readings, not from the raw files: the same answers the JSON carries are
+ * what decides the sentence, so the human and machine views cannot describe different states.
+ *
+ * Absence and unreadability are separate sentences here for the same reason they are separate
+ * readings underneath. A machine that has never activated Codex has an absent `config.toml`, and
+ * calling that "unreadable" would print a repair for a target the user has not started using —
+ * this line is where "a missing file is a fact, not a fault" has to reach the terminal. Only
+ * content this process obtained and could not use is "unreadable".
+ */
+function renderStatusHealth(codex: Record<string, unknown>): string {
+  const artifacts = (codex.artifacts as Record<string, unknown> | undefined) ?? {};
+  const config = artifacts.config as { status?: string } | undefined;
+  const authStatus = (artifacts.auth as { status?: string } | undefined)?.status;
+  const match = okValue<{ state: string; candidates: Array<{ consistent: boolean }> }>(codex.matching);
+  const registry = (codex.registry as { status?: string } | undefined)?.status;
+
+  if (registry === "invalid" || registry === "unavailable") {
+    return "providers.json unreadable";
+  }
+  if (config?.status === "invalid" || config?.status === "unavailable") {
+    return "config.toml unreadable";
+  }
+  // No active route is a state, and it is reached by both an absent `config.toml` and one without a
+  // top-level selector. Neither owes the reader a repair, and the auth projection is not checked
+  // for either: a target that was never activated has no projection to be missing.
+  if (match?.state === "not-activated") {
+    return "not activated";
+  }
+  if (!match) {
+    return "provider identity unresolved";
+  }
+  if (match.state === "ambiguous") {
     return "active provider ambiguous";
   }
-  if (issues.some((issue) => issue.code === "PROVIDER_BASE_URL_MISMATCH")) {
+  // The drift sentence comes from the matching candidates rather than from the issue list, because
+  // the section is what this renderer is handed. A candidate that disagrees with its stored record
+  // is the same fact the `PROVIDER_BASE_URL_MISMATCH` issue carries, read from the same place it is
+  // computed, so the two views cannot drift apart.
+  if (match.candidates.some((candidate) => !candidate.consistent)) {
     return "provider projection drift";
   }
-  if (auth.exists === false) {
+  if (authStatus === "absent") {
     return "auth projection missing";
   }
-  if (auth.valid === false) {
+  if (authStatus === "invalid") {
     return "auth projection invalid";
   }
   return "ok";
@@ -342,22 +540,27 @@ function renderStatusHealth(data: Record<string, unknown> | null): string {
 /**
  * Renders the mapped provider line without claiming a unique winner for shared profiles.
  */
-function renderStatusMappedProvider(data: Record<string, unknown> | null): string {
-  if (typeof data?.provider === "string" && data.provider.length > 0) {
-    return data.provider;
+function renderStatusMappedProvider(codex: Record<string, unknown>): string {
+  const match = okValue<{ state: string; activeProvider: string | null; candidates: Array<{ name: string }> }>(codex.matching);
+  if (!match) {
+    return "(unresolved)";
   }
-  const candidates = Array.isArray(data?.activeProviderCandidates) ? (data?.activeProviderCandidates as string[]) : [];
-  if (candidates.length > 1) {
-    return `(ambiguous: ${candidates.join(", ")})`;
+  if (match.state === "managed" && match.activeProvider) {
+    return match.activeProvider;
   }
-  return "(unmanaged or unresolved)";
+  if (match.state === "ambiguous") {
+    return `(ambiguous: ${match.candidates.map((candidate) => candidate.name).join(", ")})`;
+  }
+  return match.state === "not-activated" ? "(not activated)" : "(unmanaged or unresolved)";
 }
 
 /**
  * Renders the active workflow path in status output.
  */
-function renderStatusProviderPath(data: Record<string, unknown> | null): string {
-  return data?.provider ? "managed provider" : "unmanaged route";
+function renderStatusProviderPath(codex: Record<string, unknown>): string {
+  return okValue<{ state: string }>(codex.matching)?.state === "managed"
+    ? "managed provider"
+    : "unmanaged route";
 }
 
 /**
@@ -367,7 +570,9 @@ function renderStatusNextStep(data: Record<string, unknown> | null, warnings: st
   if (warnings.length > 0) {
     return "run `aps doctor` to inspect warnings before the next write command";
   }
-  if (!data?.provider) {
+  const codex = data?.codex as Record<string, unknown> | undefined;
+  const managed = okValue<{ state: string }>(codex?.matching)?.state === "managed";
+  if (!managed) {
     return "run `aps switch <provider>` after adding or adopting a managed provider";
   }
   if (Array.isArray(data?.issues) && (data?.issues as Array<Record<string, unknown>>).some((issue) => issue.code === "LEGACY_PROFILE_SELECTOR" || issue.code === "LEGACY_PROFILE_SECTION" || issue.code === "LEGACY_MODEL_PROVIDER_ENV_KEY")) {
@@ -381,12 +586,23 @@ function renderStatusNextStep(data: Record<string, unknown> | null, warnings: st
  */
 function renderDoctorIssueNextStep(issue: Record<string, unknown>): string {
   switch (issue.code) {
-    case "CONFIG_NOT_FOUND":
-      return "restore or create config.toml before switching providers";
-    case "PROVIDERS_NOT_FOUND":
-      return "run `aps init` and then add or migrate providers";
-    case "UNMANAGED_ACTIVE_PROFILE":
-      return "switch to a managed provider or adopt the active route with `aps migrate`";
+    // Absence is not one of the branches here. A missing registry, a missing `config.toml`, and a
+    // missing `settings.json` are states the report carries in its readings, so no issue is raised
+    // for them and a case for one would be unreachable — the "create the file" advice belongs to
+    // the reading, not to an issue that never fires.
+    case "CLAUDE_SETTINGS_INVALID":
+      return "repair settings.json by hand, or repair the record it matches with `aps edit --claude <name>`";
+    case "CLAUDE_DEFAULTS_INVALID":
+      return "fix or remove `claudeDefaults` in agent-provider-switch.json";
+    case "SHARED_CONFIG_INVALID":
+      return "repair agent-provider-switch.json, or restore it with `aps rollback`";
+    case "PROVIDERS_PARSE_ERROR":
+    case "CONFIG_PARSE_ERROR":
+      return "repair the file the issue names, or restore it with `aps rollback`";
+    case "AUTH_JSON_INVALID":
+      return "repair auth.json, or run `aps switch <provider>` to rewrite it from the registry";
+    case "INVALID_CONFIG":
+      return "fix the stored record the issue names; `aps show --claude <name>` prints its resolved settings";
     case "LEGACY_PROFILE_SELECTOR":
     case "LEGACY_PROFILE_SECTION":
     case "LEGACY_MODEL_PROVIDER_ENV_KEY":
@@ -395,8 +611,8 @@ function renderDoctorIssueNextStep(issue: Record<string, unknown>): string {
       return "rerun `aps edit <provider> --base-url <url>` or `aps switch <provider>` to repair the runtime projection";
     case "LOCK_STALE":
       return "the next write command clears it automatically, or run `aps unlock`";
-    case "LOCK_OCCUPIED":
-      return "wait for the running operation, or run `aps unlock --force` if it is a recycled pid";
+    case "LOCK_ABNORMAL":
+      return "inspect the lock file the issue names, then run `aps unlock --force`";
     default:
       return "inspect the issue details and rerun `aps doctor` after fixing the state";
   }
@@ -480,6 +696,13 @@ function renderClaudeHumanSuccess(command: string, data: Record<string, unknown>
         lines.push(String(data.message));
       } else if (data.status === "managed" && data.active) {
         lines.push(`Active Claude provider: ${String(data.active)}`);
+        if (data.model) lines.push(`  model: ${String(data.model)}`);
+        if (data.baseUrl) lines.push(`  base URL: ${String(data.baseUrl)}`);
+      } else if (data.status === "ambiguous") {
+        // Named with its candidates and without a winner. Saying "does not match any registered
+        // provider" here would be false, and naming one of them would be a guess.
+        const candidates = Array.isArray(data.candidates) ? (data.candidates as string[]) : [];
+        lines.push(`Current Claude settings match more than one registered provider: ${candidates.join(", ")}.`);
         if (data.model) lines.push(`  model: ${String(data.model)}`);
         if (data.baseUrl) lines.push(`  base URL: ${String(data.baseUrl)}`);
       } else {

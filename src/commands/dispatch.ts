@@ -1,13 +1,15 @@
 import { CommandResult } from "../app/types";
 import { cliError } from "../domain/errors";
-import { resolveTarget } from "../domain/target";
+import { resolveTarget, selectedTargets } from "../domain/target";
 import { createPromptRuntime, CliPromptRuntime } from "../interaction/prompt";
-import { createToolHomePaths, resolveCodexDir } from "../storage/codex-paths";
+import { CODEX_DIR_ENV_NAME, createToolHomePaths, resolveCodexDir } from "../storage/codex-paths";
 import { readToolConfigIfExists } from "../storage/tool-config-repo";
 import { ensureLegacyToolHomeMigrated } from "../storage/tool-home-migration";
 import { assertFlagsApply } from "./flag-guards";
 import { findCommandDefinition } from "./registry";
-import { CommandExecutionContext, ParsedCommand } from "./types";
+import { CommandExecutionContext, CommandId, ParsedCommand } from "./types";
+import { ToolConfigInspection, inspectToolConfig } from "../app/inspect-tool-config";
+import { valueOf } from "../domain/report";
 
 /**
  * Resolves the shared command definition and executes its registered handler.
@@ -22,41 +24,35 @@ export async function executeCommand(
     throw cliError("UNKNOWN_COMMAND", `Unknown command: ${ctx.command}`);
   }
 
-  // The one funnel every command passes through, whichever target it names — `handleClaudeCommand`
-  // is only reachable from a registered handler — so a single call site covers Codex and Claude
-  // alike. It runs before the tool-home paths are built, because those resolve to the new home.
-  // A throw after this point drops the notice: `renderFailure` has no warnings channel. Migration
-  // failure is therefore reported as a warning rather than an error inside the module itself, and
-  // never turns into a hard failure here.
-  const migrationWarnings = ensureLegacyToolHomeMigrated().warnings;
+  // A definite answer from here on, and before anything touches a file. Every step below can
+  // throw, and each of those failures has to render with the scope the invocation was *accepted*
+  // at rather than with an absent field — `JSON.stringify` drops an `undefined` key, and a consumer
+  // reading `targets` would then have to guess whether the build predates the field. A `[]` here is
+  // the value that survives a throw from any of them.
+  ctx.targets = [];
 
-  const toolConfigPath = createToolHomePaths().toolConfigPath;
-  const toolConfig = readToolConfigIfExists(toolConfigPath);
-  ctx.toolConfig = toolConfig;
-  ctx.options.codexDir = resolveCodexDir(ctx.options.codexDir ?? undefined, toolConfig);
-
-  // A definite target from here on. It is set to `null` before anything below can throw, so a
-  // refusal raised by a guard, by the conflict rule, or by the handler itself still renders with
-  // a `target` field rather than an absent one — `JSON.stringify` drops an `undefined` key, and a
-  // consumer reading `target` would then have to guess whether the build predates the field.
-  ctx.target = null;
-
+  // Scope is settled before any I/O, which is the ordering `1.1.3` makes normative. It has two
+  // consequences that are easy to get backwards: a command whose flags are refused never runs the
+  // legacy-home migration first (so a `backups prune --claude` cannot move a directory on its way
+  // to being rejected), and a failure *after* an accepted scope — a migration fault, an unreadable
+  // tool config, a handler error — reports the accepted scope rather than emptying it.
+  //
   // Both flag judgements live here rather than in `handleRegisteredCommand`, for one reason: the
-  // resolved target has to reach `ctx` before the handler runs, because the handler is what throws
-  // the failures the envelope has to describe. The lock step below is the reason the guard cannot
-  // run any earlier — it is the first point where the command id is known to be a real one.
+  // resolved targets have to reach `ctx` before the handler runs, because the handler is what
+  // throws the failures the envelope has to describe. The definition lookup above is the first
+  // point where the command id is known to be a real one, and that is all either judgement needs.
   //
   // The guard is asked first, and it judges each flag on its own. Only once both `--claude` and
   // `--codex` are individually acceptable does the question of whether they contradict each other
   // arise, and that question belongs to `resolveTarget()`: a pair rule inside the guard loop would
   // have to be re-checked per entry and would report the conflict on whichever flag the table
   // happened to list second.
-  assertFlagsApply(ctx.command, parsed.commandOptions);
+  assertFlagsApply(definition.id, parsed.commandOptions, parsed.globalOptions);
 
   // `definition.id`, not `ctx.command`: the context's `command` is the wider
   // `CommandId | "help" | "version"` union that the pre-dispatch render paths need, while the
   // definition found above is proof that a real command id resolved. Passing the narrowed value
-  // keeps `resolveTarget()`'s parameter honest instead of widening it to the union.
+  // keeps these parameters honest instead of widening them to the union.
   const resolution = resolveTarget({
     command: definition.id,
     claudeRequested: parsed.commandOptions.has("--claude"),
@@ -65,7 +61,34 @@ export async function executeCommand(
   if ("refusal" in resolution) {
     throw cliError(resolution.refusal.code, resolution.refusal.message, { command: ctx.command });
   }
-  ctx.target = resolution.target;
+
+  // The refusal above is all `resolveTarget()` is read for: its `target` arm assumes one target
+  // per command, and a `both` command covers two. `selectedTargets()` is the only reader of the
+  // flags for those, so it — not `resolveTarget()` — decides what the envelope reports.
+  ctx.targets = selectedTargets(definition.id, parsed.commandOptions);
+
+  // The one funnel every command passes through, whichever target it names — `handleClaudeCommand`
+  // is only reachable from a registered handler — so a single call site covers Codex and Claude
+  // alike. It runs before the tool-home paths are built, because those resolve to the new home.
+  // A throw after this point drops the notice: `renderFailure` has no warnings channel. Migration
+  // failure is therefore reported as a warning rather than an error inside the module itself, and
+  // never turns into a hard failure here.
+  const migrationWarnings = ensureLegacyToolHomeMigrated().warnings;
+
+  const toolHomePaths = createToolHomePaths();
+  // Two readers, and the choice between them is the command's: a mutation must fail fast on a
+  // defaults block it cannot parse, while `doctor` and `status` exist to explain exactly that file.
+  // Sharing one reader would force one of the two behaviours on the other.
+  if (isReportCommand(definition.id)) {
+    const inspection = inspectToolConfig(toolHomePaths.toolConfigPath);
+    ctx.toolConfigInspection = inspection;
+    ctx.toolConfig = null;
+    ctx.options.codexDir = resolveReportCodexDir(ctx, toolHomePaths.toolConfigPath, inspection);
+  } else {
+    const toolConfig = readToolConfigIfExists(toolHomePaths.toolConfigPath);
+    ctx.toolConfig = toolConfig;
+    ctx.options.codexDir = resolveCodexDir(ctx.options.codexDir ?? undefined, toolConfig);
+  }
 
   const result = await definition.handler(ctx, parsed, runtime);
   if (migrationWarnings.length === 0) {
@@ -74,4 +97,63 @@ export async function executeCommand(
 
   // Migration warnings lead: the home moving is the context for everything the handler reports.
   return { ...result, warnings: [...migrationWarnings, ...(result.warnings ?? [])] };
+}
+
+/**
+ * The commands that report on state rather than changing it, and therefore read the shared config
+ * in the reporting style.
+ *
+ * A list rather than a scope test, because the two answer different questions: `backups list` is a
+ * `both` command that never reads the tool config at all, so giving it the lenient reader would
+ * buy nothing, and a future reporting command should have to say so here rather than inherit the
+ * behaviour from its scope by accident.
+ */
+const REPORT_COMMANDS: ReadonlySet<CommandId> = new Set<CommandId>(["doctor", "status"]);
+
+function isReportCommand(command: CommandId): boolean {
+  return REPORT_COMMANDS.has(command);
+}
+
+/**
+ * Resolves the Codex directory for a reporting command, without ever guessing one.
+ *
+ * `resolveCodexDir()`'s last resort is `~/.codex`, which is the right default for a command about
+ * to write there and the wrong answer for a report: it would present an invented path as a finding.
+ * So the shared-config step is taken only when the shared config was actually readable, and the
+ * two independent sources — the explicit flag and the environment — are honoured either way.
+ *
+ * When none of the three answers, `codexDirUnavailableReason` is set and the report marks its
+ * runtime-derived readings `unavailable`. The registry path is not affected: it is derived from
+ * the tool home, which this process resolved without reading the shared config at all.
+ */
+function resolveReportCodexDir(
+  ctx: CommandExecutionContext,
+  toolConfigPath: string,
+  inspection: ToolConfigInspection
+): string {
+  if (ctx.options.codexDir) {
+    return resolveCodexDir(ctx.options.codexDir, null);
+  }
+  const fromEnv = process.env[CODEX_DIR_ENV_NAME];
+  if (fromEnv) {
+    return resolveCodexDir(undefined, null);
+  }
+  const fromShared = valueOf(inspection.defaultCodexDir);
+  if (inspection.defaultCodexDir.status === "ok" && fromShared) {
+    return resolveCodexDir(fromShared, null);
+  }
+
+  ctx.codexDirUnavailableReason =
+    inspection.defaultCodexDir.status === "ok"
+      ? `No Codex directory is configured; agent-provider-switch.json (${toolConfigPath}) names none.`
+      : `The Codex directory cannot be determined: ${
+          inspection.defaultCodexDir.status === "absent"
+            ? "no configured default is available"
+            : inspection.defaultCodexDir.reason
+        }.`;
+
+  // Still resolved, because the handler's path construction needs a directory to build from and
+  // the report is what declines to use it — a null here would spread through every call site for
+  // no gain. `codexDirUnavailableReason` is what the report reads.
+  return resolveCodexDir(undefined, null);
 }

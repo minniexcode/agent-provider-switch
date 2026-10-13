@@ -256,35 +256,85 @@ module.exports = {
         // developer machine that has the real CLI and on a CI runner that does not. The healthy case
         // used to run on the ambient PATH, which passed locally and failed on every CI leg with
         // CODEX_NOT_INSTALLED.
+        // Every invocation below is narrowed with `--codex`, which is the 1.1.3 replacement for the
+        // bare form: a bare `doctor` now covers both targets, and `createSandbox()` creates the
+        // Claude root, so the bare form reports Claude findings these Codex assertions know nothing
+        // about. Without the flag the issue lines below would also gain a `[codex]` prefix. The
+        // two-target case is covered by its own test at the end of this suite.
         const withCodex = { PATH: sandboxPathWithFakeCodex(sandbox) };
         const withoutCodex = { PATH: sandboxPathWithoutCodex(sandbox) };
-        const healthy = runOk(sandbox, ["doctor", "--json"], { env: withCodex });
+        const healthy = runOk(sandbox, ["doctor", "--codex", "--json"], { env: withCodex });
         assert.equal(
           healthy.json.data.healthy,
           true,
           `expected a healthy tree, got ${JSON.stringify(healthy.json.data.issues)}`
         );
         assert.deepEqual(healthy.json.data.issues, []);
+        // Configured and healthy are separate answers, and both live in the target's section: a
+        // registry file is the evidence that Codex has been used here, and it is a reading rather
+        // than a boolean so that "no evidence" and "could not tell" stay apart.
+        assert.deepEqual(healthy.json.data.codex.configured, { status: "ok", value: true });
+        assert.equal(healthy.json.data.claude, undefined, "a narrowed run must carry one target's fields");
 
-        const humanHealthy = runCli(sandbox, ["doctor"], { env: withCodex });
+        const humanHealthy = runCli(sandbox, ["doctor", "--codex"], { env: withCodex });
         assert.match(humanHealthy.stdout, /^Doctor summary: healthy\. No action required\.$/m);
 
-        const stripped = runOk(sandbox, ["doctor", "--json"], { env: withoutCodex });
+        const stripped = runOk(sandbox, ["doctor", "--codex", "--json"], { env: withoutCodex });
         assert.deepEqual(stripped.json.data.issues.map((issue) => issue.code), ["CODEX_NOT_INSTALLED"]);
 
-        const humanStripped = runCli(sandbox, ["doctor"], { env: withoutCodex });
+        const humanStripped = runCli(sandbox, ["doctor", "--codex"], { env: withoutCodex });
         assert.match(humanStripped.stdout, /^Doctor summary: 1 issue\(s\) need attention\.$/m);
         assert.match(humanStripped.stdout, /^- CODEX_NOT_INSTALLED: codex CLI is not available on PATH\.$/m);
         assert.match(humanStripped.stdout, /^  next step: inspect the issue details/m);
 
-        // A missing config.toml and a missing registry are separate findings with separate fixes.
-        const bare = createSandbox();
-        const bareResult = runOk(bare, ["doctor", "--json"], { env: withoutCodex });
-        const bareCodes = bareResult.json.data.issues.map((issue) => issue.code);
-        assert.ok(bareCodes.includes("CONFIG_NOT_FOUND"), `expected CONFIG_NOT_FOUND, got ${bareCodes.join(", ")}`);
+        // A registry with no runtime configuration is a *prepared* target, not a broken one. The
+        // findings this used to assert — a missing `config.toml`, and a missing top-level selector —
+        // were retired with the activation gate: the second was `MODEL_PROVIDER_MISSING`, which told
+        // a user who had never switched anything that their Codex setup needed repair. The probe is
+        // not run either, so a host without the Codex CLI is not faulted for a target that is not
+        // activated.
+        const prepared = createSandbox();
+        writeJson(path.join(prepared.home, "providers.json"), {
+          providers: {
+            freemodel: {
+              profile: "freemodel",
+              apiKey: "sk-freemodel",
+              baseUrl: "https://freemodel.example/v1",
+              model: "gpt-5-mini",
+            },
+          },
+        });
+        const preparedResult = runOk(prepared, ["doctor", "--codex", "--json"], { env: withoutCodex });
+        assert.deepEqual(preparedResult.json.data.issues, []);
+        assert.equal(preparedResult.json.data.healthy, true);
+        assert.deepEqual(preparedResult.json.data.codex.activation, { status: "ok", value: "not-activated" });
+        assert.deepEqual(preparedResult.json.data.codex.configured, { status: "ok", value: true });
 
-        const bareHuman = runCli(bare, ["doctor"], { env: withoutCodex });
-        assert.match(bareHuman.stdout, /^  next step: restore or create config\.toml/m);
+        // The same state reached from the other side: a `config.toml` that exists and carries no
+        // top-level selector. It is `not-activated` too, and its absent model, its unlinked profile,
+        // and the missing CLI are all facts about a target nobody has pointed this tool at.
+        const unselected = createSandbox();
+        writeJson(path.join(unselected.home, "providers.json"), {
+          providers: {
+            freemodel: {
+              profile: "freemodel",
+              apiKey: "sk-freemodel",
+              baseUrl: "https://freemodel.example/v1",
+              model: "gpt-5-mini",
+            },
+          },
+        });
+        fs.writeFileSync(
+          path.join(unselected.codex, "config.toml"),
+          'model = "gpt-5-mini"\n\n[model_providers.freemodel]\nbase_url = "https://freemodel.example/v1"\n',
+          "utf8"
+        );
+        const unselectedResult = runOk(unselected, ["doctor", "--codex", "--json"], { env: withoutCodex });
+        assert.deepEqual(unselectedResult.json.data.issues, []);
+        assert.deepEqual(unselectedResult.json.data.codex.matching, {
+          status: "ok",
+          value: { state: "not-activated", activeProvider: null, candidates: [] },
+        });
 
         // Drift is what a hand-edit of config.toml produces: the projection moves and the registry
         // does not. Rewriting the section is the only way to reach it, since every managed write
@@ -296,31 +346,143 @@ module.exports = {
         // hand-edited afterwards looks like.
         writeCleanCodex(drifted, "https://somewhere-else.example/v1");
 
-        const drift = runOk(drifted, ["doctor", "--json"], { env: withoutCodex });
+        const drift = runOk(drifted, ["doctor", "--codex", "--json"], { env: withoutCodex });
         assert.ok(
           drift.json.data.issues.some((issue) => issue.code === "PROVIDER_BASE_URL_MISMATCH"),
           `expected a projection mismatch, got ${JSON.stringify(drift.json.data.issues.map((issue) => issue.code))}`
         );
-        const driftHuman = runCli(drifted, ["doctor"], { env: withoutCodex });
+        const driftHuman = runCli(drifted, ["doctor", "--codex"], { env: withoutCodex });
         assert.match(driftHuman.stdout, /^  next step: rerun `aps edit <provider> --base-url <url>`/m);
 
-        // The lock arms of the same switch, which have their own next steps.
+        // The lock arms of the same switch. The lock is the one target-neutral reading, so it is
+        // inspected once outside the target collectors under any scope — never once per target.
         writeLock(drifted, { pid: DEAD_PID, operation: "switch", createdAt: new Date().toISOString() });
-        const staleHuman = runCli(drifted, ["doctor"], { env: withoutCodex });
+        const stale = runOk(drifted, ["doctor", "--codex", "--json"], { env: withoutCodex });
+        // A dead owner is recoverable, so the reading says `abnormal` and the finding carries the
+        // repair. The reading is `ok` because the lock was successfully inspected: the state is
+        // known, which is a different question from whether it is a fault.
+        assert.deepEqual(stale.json.data.shared.lock, { status: "ok", value: "abnormal" });
+        assert.ok(stale.json.data.issues.some((issue) => issue.code === "LOCK_STALE"));
+
+        const staleHuman = runCli(drifted, ["doctor", "--codex"], { env: withoutCodex });
+        assert.match(staleHuman.stdout, /^  shared lock: abnormal$/m);
         assert.match(staleHuman.stdout, /^  next step: the next write command clears it automatically, or run `aps unlock`$/m);
 
+        // A lock held by a running operation is the case the old `LOCK_OCCUPIED` finding got wrong:
+        // every write command fails while it is present, so turning it into a fault meant a
+        // background `aps` run could make `doctor` call the install broken. It is now a state, and
+        // the human line says so without a next step to act on.
         writeLock(drifted, { pid: process.pid, operation: "switch", createdAt: new Date().toISOString() });
-        const occupiedHuman = runCli(drifted, ["doctor"], { env: withoutCodex });
-        assert.match(occupiedHuman.stdout, /^  next step: wait for the running operation, or run `aps unlock --force`/m);
-        assert.match(occupiedHuman.stdout, /^- LOCK_OCCUPIED: /m);
+        const occupied = runOk(drifted, ["doctor", "--codex", "--json"], { env: withoutCodex });
+        assert.deepEqual(occupied.json.data.shared.lock, { status: "ok", value: "busy" });
+        assert.equal(
+          occupied.json.data.issues.some((issue) => issue.code.startsWith("LOCK_")),
+          false,
+          `a live lock must not be a finding: ${JSON.stringify(occupied.json.data.issues.map((issue) => issue.code))}`
+        );
+
+        const occupiedHuman = runCli(drifted, ["doctor", "--codex"], { env: withoutCodex });
+        assert.match(occupiedHuman.stdout, /^  shared lock: busy$/m);
+        assert.doesNotMatch(occupiedHuman.stdout, /LOCK_OCCUPIED/);
 
         // Legacy wiring shares one next step across all three of its codes.
         const legacy = createSandbox();
         seedCodex(legacy, { modelProvider: "freemodel", legacyProfile: "freemodel" });
         addProvider(legacy, "freemodel");
-        const legacyHuman = runCli(legacy, ["doctor"], { env: withoutCodex });
+        const legacyHuman = runCli(legacy, ["doctor", "--codex"], { env: withoutCodex });
         assert.match(legacyHuman.stdout, /^- LEGACY_PROFILE_SELECTOR: /m);
         assert.match(legacyHuman.stdout, /^  next step: rerun `aps switch <provider>` to project/m);
+      },
+    },
+    {
+      name: "the bare doctor covers both targets, and still refuses the pair and the narrowing contradiction",
+      run() {
+        const sandbox = createSandbox();
+        writeCleanCodex(sandbox);
+        addProvider(sandbox, "freemodel");
+        const withoutCodex = { PATH: sandboxPathWithoutCodex(sandbox) };
+
+        // Both targets in scope, so a consumer gets one report per run. The Codex findings come from
+        // the probe and the Claude ones from the runtime directory `createSandbox()` created, which
+        // has neither a registry nor a settings file in it.
+        const bare = runOk(sandbox, ["doctor", "--json"], { env: withoutCodex });
+        assert.deepEqual(bare.json.targets, ["codex", "claude"]);
+        assert.equal(bare.json.target, null);
+        // Each target answers the evidence question in its own section, and the Claude root the
+        // sandbox created is empty: a directory is not evidence, so the answer is `false` rather
+        // than an unmanaged machine being mistaken for a configured one.
+        assert.deepEqual(bare.json.data.codex.configured, { status: "ok", value: true });
+        assert.deepEqual(bare.json.data.claude.configured, { status: "ok", value: false });
+
+        const issues = bare.json.data.issues;
+        for (const issue of issues) {
+          assert.ok("target" in issue, `an issue must name a target: ${issue.code}`);
+        }
+        assert.deepEqual(
+          issues.filter((issue) => issue.target === "codex").map((issue) => issue.code),
+          ["CODEX_NOT_INSTALLED"]
+        );
+        // An empty Claude root raises nothing. A missing registry is a determinate zero records and
+        // a missing `settings.json` is not-activated; neither is a fault, so the findings that used
+        // to be raised here — `PROVIDERS_NOT_FOUND`, `CLAUDE_SETTINGS_NOT_FOUND` — are gone.
+        assert.deepEqual(
+          issues.filter((issue) => issue.target === "claude").map((issue) => issue.code),
+          []
+        );
+
+        // Two prefixes rather than one, because a bare issue line comes from either check set and a
+        // reader who cannot tell them apart cannot tell what to fix. `[codex]` is not printed on a
+        // narrowed run, where there is nothing to disambiguate.
+        const human = runCli(sandbox, ["doctor"], { env: withoutCodex });
+        assert.match(human.stdout, /^Doctor summary: 1 issue\(s\) need attention\.$/m);
+        assert.match(human.stdout, /^- \[codex\] CODEX_NOT_INSTALLED: /m);
+        assert.doesNotMatch(human.stdout, /\[claude\]/, "an empty Claude root has no findings to label");
+
+        // The pair is a refusal rather than a two-target report, whichever spelling asks for it.
+        const pair = runFail(sandbox, ["doctor", "--claude", "--codex", "--json"]);
+        assert.equal(pair.json.error.code, "INVALID_ARGUMENT");
+        assert.match(pair.json.error.message, /cannot be combined/);
+        assert.deepEqual(pair.json.targets, []);
+
+        // And a `--codex-dir` under `--claude` is refused rather than dropped: the directory is part
+        // of what the command would otherwise report, and naming one contradicts the narrowing.
+        const contradictory = runFail(sandbox, ["doctor", "--claude", "--codex-dir", sandbox.codex, "--json"]);
+        assert.equal(contradictory.json.error.code, "INVALID_ARGUMENT");
+        assert.match(contradictory.json.error.message, /--codex-dir does not apply/);
+      },
+    },
+    {
+      name: "a Claude-only machine has no Codex findings to report",
+      run() {
+        const sandbox = createSandbox();
+        // A registry and a settings file for Claude, and nothing at all for Codex: the runtime
+        // directory exists but holds no config.toml, which is what every sandbox looks like.
+        const file = path.join(sandbox.root, "claude-settings.json");
+        writeJson(file, { model: "claude-sonnet-5", env: { ANTHROPIC_BASE_URL: "https://claude.example" } });
+        runOk(sandbox, ["add", "--claude", "alpha", "--from-file", file, "--json"]);
+        runOk(sandbox, ["switch", "--claude", "alpha", "--json"]);
+
+        // The narrow form is the Claude-only machine's view of `doctor`: the Codex probe is not run
+        // at all, so a host without the Codex CLI is not told it has a Codex problem.
+        const withoutCodex = { PATH: sandboxPathWithoutCodex(sandbox) };
+        const claude = runOk(sandbox, ["doctor", "--claude", "--json"], { env: withoutCodex });
+        assert.deepEqual(claude.json.targets, ["claude"]);
+        assert.deepEqual(claude.json.data.issues, []);
+        assert.equal(claude.json.data.healthy, true);
+        assert.deepEqual(claude.json.data.claude.configured, { status: "ok", value: true });
+        // The active provider is the `managed` match rather than a field beside it, so the identity
+        // question has one answer and no second copy to disagree with.
+        assert.deepEqual(claude.json.data.claude.matching, {
+          status: "ok",
+          value: {
+            state: "managed",
+            activeProvider: "alpha",
+            candidates: [{ name: "alpha", consistent: true, differencePaths: [] }],
+          },
+        });
+
+        const human = runCli(sandbox, ["doctor", "--claude"], { env: withoutCodex });
+        assert.match(human.stdout, /^Doctor summary: healthy\. No action required\.$/m);
       },
     },
   ],

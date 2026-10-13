@@ -1,7 +1,7 @@
 # agent-provider-switch v1.1.1 Design Document
 
-**The target becomes explicit.** Additive release on the `1.x` line, and the first of three on
-`1.1.x`. No architecture change: both registries, the projection model, the merge rule, the lock
+**The target becomes explicit.** Additive release on the `1.x` line, and the first target-foundation stage after
+`1.1.0`. No architecture change: both registries, the projection model, the merge rule, the lock
 discipline, and the rollback containment are untouched. No command gains or loses a target.
 
 Its companions are `docs/Design/agent-provider-switch-v1.1.2-design.md` (one error vocabulary) and
@@ -22,8 +22,8 @@ returns it as a boolean, `data.target` carries it as a payload field nobody set 
 `claude-` operation prefix carries it as a string convention. The release introduces `TargetId` and
 `resolveTarget()`, then points all three at them.
 
-**`--codex` is accepted everywhere; `--claude` keeps its narrowness.** Naming the default must not
-fail, so `--codex` has almost no refusal surface. `--claude` keeps exactly the refusal it has today,
+**`--codex` names the default route; `--claude` keeps its narrowness.** Except for Claude-only
+`config compact`, naming the default route must not fail, so `--codex` has almost no refusal surface. `--claude` keeps exactly the refusal it has today,
 because loosening it here would ship a `doctor` that half-works.
 
 **Nothing is removed.** `data.target` stays for one release. The envelope gains a field; the payload
@@ -53,13 +53,14 @@ belongs: it answers "does this command have a Claude code path", which is a diff
 answer whether the two agree. Merging them would mean the capability table had to be edited to add a
 target-aware command, which is exactly the coupling `1.1.3` has to untangle.
 
-**A conflict is a refusal, not a precedence rule.** `--claude --codex` returns a refusal; the caller
-raises it through `assertFlagsApply()`'s existing `INVALID_ARGUMENT` path. A hidden precedence
+**A conflict is a refusal, not a precedence rule.** `--claude --codex` returns a refusal; dispatch
+raises it with `INVALID_ARGUMENT` before accepting a route. A hidden precedence
 (`--claude` wins because it is more specific) would silently ignore a flag the user typed.
 
-**`null` means "no command".** `resolveTarget` returns `{ target: null }` when `command` is null, and
-that is a success, not a refusal: the parse-failure and unrecognized-command paths legitimately have
-no command to describe.
+**`null` means "no accepted target route".** `resolveTarget` returns `{ target: null }` when
+`command` is null, and that is a success, not a refusal: the parse-failure and unrecognized-command paths legitimately have
+no command to describe. Unsupported target selection or conflicting flags also leave the failure
+context's target null; recognizing a command alone does not accept its target selection.
 
 ## 2. `--codex` in the parser
 
@@ -90,10 +91,11 @@ existing convention for `restoreManifest()`'s allowlist and the Claude services'
 argument, where the parameter is required precisely so a new call site cannot forget it.
 
 - `cli.ts`'s three pre-dispatch constructions pass `target: null`.
-- `executeCommand` in `dispatch.ts` calls `resolveTarget()` once, after `assertFlagsApply()` has had
-  its say, and assigns the result. It is the single funnel every command passes through, so there is
-  exactly one call site — the same property that made it the right home for the legacy-home
-  migration.
+- `executeCommand` in `dispatch.ts` calls `resolveTarget()` once to reject pair conflicts,
+  validates individual target capabilities through `assertFlagsApply()`, then assigns the accepted
+  route **before any filesystem work**, including migration and shared-config reads. Until both
+  checks pass the failure context remains null; later failures retain the accepted route.
+  Dispatch remains the single funnel and the only route-assignment site.
 
 `resolveTarget()`'s refusal is thrown from `dispatch.ts`, not from `assertFlagsApply()`. The guard
 table decides whether a single flag is *acceptable for a command*; whether two flags are
@@ -121,14 +123,15 @@ renderer stops reading it.
 to reach the Claude view. It gains the resolved target as its first argument and branches on that
 instead. The renderer was the only reader, so after this change `data.target` has no consumer inside
 the repository — which is the honest state to be in before removing it in `1.1.2`, and is why its
-removal there is a documentation change rather than a code change.
+removal there changes the external payload contract while leaving renderer routing intact.
 
 The Claude services keep setting it for one release on purpose. Removing it here would break a `data`
 payload in a release whose stated property is that no `data` payload changes.
 
 ## 5. Flag guards
 
-`src/commands/flag-guards.ts` gains a `--codex` entry and a conflict rule.
+`src/commands/flag-guards.ts` gains a `--codex` entry. Pair conflicts are rejected by the target
+resolver in dispatch before file I/O.
 
 `FlagGuard` today is `{ flag, accepts, supportedCommands, requiresClaude }`. `--codex` fits none of
 it cleanly: its `accepts` is "everything except `config compact`", and `requiresClaude` is the
@@ -145,10 +148,10 @@ there is no Codex form. This is unchanged behaviour — `aps config compact` is 
 branch in `handleRegisteredCommand`. That branch stays for the bare case; the guard covers the case
 where the user named Codex explicitly.
 
-**The pair rule runs after the loop.** Once each flag has been judged acceptable on its own,
-`assertFlagsApply()` refuses `--claude --codex` together. Placed inside the loop, the check would run
-once per guard entry and would report the conflict on whichever flag the table happened to list
-second.
+**The pair rule precedes individual capability refusals.** Dispatch checks the target conflict
+before individual target-flag guards, so `doctor --codex --claude` is consistently a conflict even
+though `doctor --claude` alone is unsupported in this stage. Both paths leave the route unaccepted.
+Individual guards and route assignment still finish before any filesystem work.
 
 **`--codex` does not make `--claude` acceptable on a command that lacks a Claude path.** `aps
 doctor --codex --claude` is a conflict and is refused as one; `aps doctor --claude` is refused as it
@@ -173,9 +176,9 @@ is today. The two refusals are distinct and separately asserted, because they wi
 
 - **`--codex` is accepted on `backups prune`, `rollback`, and `unlock`, where it means nothing.**
   `1.1.3` refuses it there. For one release the flag is accepted-and-ignored on three commands, which
-  is the exact failure mode `flag-guards.ts` was written to close. It is accepted here rather than
-  refused because refusing it would require the `1.1.3` scope table, and shipping half of that table
-  is how a `doctor` ends up reporting one target under a flag that asked for two.
+  is a temporary limitation of this foundation stage. The `"codex"` envelope tag on these commands
+  describes the legacy handler route, not the state they affect. The accepted final scope contract
+  in `1.1.3` removes those flags and uses an empty scope; this is a deliberate breaking correction.
 - **A third target is a union edit.** `TargetId` is closed, so adding one is a type change plus an
   exhaustive-switch failure at every consumer — which is the desired shape, but it means this release
   does not by itself make a third target cheap. That is `1.2.0`'s job, and the PRD says so.
@@ -216,6 +219,7 @@ is today. The two refusals are distinct and separately asserted, because they wi
 
 See `docs/PRD/agent-provider-switch-prd-v1.1.1.md`. In short: `--codex` parses position-independently
 and changes no `data`; `--claude --codex` is refused; `config compact --codex` is refused; every
-`--json` envelope carries `target`, `null` exactly when no command resolved; `data.target` is still
+`--json` envelope carries `target`, null when no valid target route was accepted; execution failures
+retain the accepted route; `data.target` is still
 emitted for Claude commands and equals the envelope field; `aps doctor --claude` is still refused;
 and `npm run build`, `npx tsc --noEmit`, `node tests/run-tests.js`, and `npm run test:e2e` pass.

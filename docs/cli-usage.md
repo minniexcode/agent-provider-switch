@@ -1,14 +1,16 @@
 # CLI Usage
 
-This document describes the current `1.1.2` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
+This document describes the current `1.1.3` repository development-line CLI contract for `@minniexcode/agent-provider-switch`.
 
 `agent-provider-switch` is a local-first CLI for managing and switching Codex and Claude Code provider routing. It manages local provider records, projects the active Codex route into `config.toml` and `auth.json`, and switches Claude Code `settings.json` profiles.
 
 ## Version
 
-Current package version: `1.1.2`
+Current package version: `1.1.3`
 
 This line targets Codex `0.134.0+`, where the active route is selected by top-level `model` plus `model_provider`. Legacy top-level `profile` and `[profiles.*]` sections may still be inspected for migration/adoption, and `--create-profile` writes one on request, but they are not the recommended managed route.
+
+`1.1.3` makes the target a fact about the command rather than a flag on it. Every command declares a target *scope*, and `status`, `doctor`, and `backups list` report on both targets at once — so a machine with only Claude Code now has a health check. Three consequences: a bare multi-target command carries `"target": null` and names its targets in a new authoritative `targets` array; `doctor` no longer reports a target you never configured, so a fresh tool home is healthy; and the three commands that act on state both targets share — `backups prune`, `rollback`, `unlock` — refuse both target flags. `--codex-dir` is also refused alongside `--claude`, since the directory is part of what the command was asked to report. See the migration table in [CHANGELOG.md](../CHANGELOG.md).
 
 `1.1.2` is **breaking for `--json` consumers**. Error codes no longer name a target: `CLAUDE_PROVIDER_NOT_FOUND`, `CLAUDE_PROVIDERS_NOT_FOUND`, `CLAUDE_PROVIDERS_PARSE_ERROR`, and `CLAUDE_PROVIDER_ALREADY_EXISTS` become `PROVIDER_NOT_FOUND`, `PROVIDERS_NOT_FOUND`, `PROVIDERS_PARSE_ERROR`, and `PROVIDER_ALREADY_EXISTS`; `CLAUDE_SETTINGS_NOT_FOUND` is deleted (it was declared and never thrown). The Claude payload loses its `data.target` field. Exit codes and messages are unchanged, and `target` on the envelope is now the supported way to tell the two lines apart. See the migration table in [CHANGELOG.md](../CHANGELOG.md).
 
@@ -28,9 +30,9 @@ This line targets Codex `0.134.0+`, where the active route is selected by top-le
 |---|---|
 | `--json` | Render the standard JSON envelope and disable all prompts. |
 | `--reveal` | Print secret values instead of masking them. Affects `show --claude` only. |
-| `--codex-dir <path>` | Target a specific Codex directory instead of `~/.codex`. Requires a path: a following token starting with `-` is refused. |
+| `--codex-dir <path>` | Target a specific Codex directory instead of `~/.codex`. Requires a path: a following token starting with `-` is refused. Refused together with `--claude` on a two-target command. |
 | `--claude` | Target the Claude Code path on the commands that support it. |
-| `--codex` | Target the Codex path. This is the default, named. Accepted everywhere except `config compact`. |
+| `--codex` | Target the Codex path. This is the default, named. Accepted on every command except `config compact` (no Codex form) and the three shared-state commands, which refuse it. |
 | `--full` | With `add --claude`, store every entry of the imported file instead of only those that differ from the shared defaults. |
 | `--dry-run` | With `config compact --claude`, report what would change without taking the lock or writing anything. |
 | `--help`, `-h` | Show top-level or command-specific help. |
@@ -38,15 +40,42 @@ This line targets Codex `0.134.0+`, where the active route is selected by top-le
 
 `--reveal` is parsed as a **global** flag, not a per-command option. The command-option pass treats any `--flag <non-flag>` pair as a valued option, so a per-command `--reveal` would swallow the provider name that follows it. As a global flag it is matched by exact token, and both `show --claude --reveal <name>` and `show --claude <name> --reveal` work. `--json` and `--codex-dir` are stripped in the same pass.
 
-`--claude` is also global, but it is accepted only by `add`, `switch`, `list`, `show`, `current`, `remove`, and `config compact`. On any other command it is refused with `INVALID_ARGUMENT` naming that set. Ignoring it would answer the wrong question — `aps status --claude` would report Codex state under a flag that asked about Claude.
+`--claude` is also global, but it is accepted only by `add`, `switch`, `list`, `show`, `current`, `remove`, `config compact`, and the three two-target commands `status`, `doctor`, and `backups list`. On any other command it is refused with `INVALID_ARGUMENT` naming that set. Ignoring it would answer the wrong question — `aps init --claude` would report Codex state under a flag that asked about Claude.
 
-`--codex` is global and accepted by every command except `config compact`, which rewrites Claude provider records and has no Codex form. Naming the default must not fail, so it carries almost no refusal surface; it exists so a command line reads the same whichever target it picks. `--claude --codex` names two different targets and is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule — letting `--claude` win as the "more specific" flag would silently ignore a flag the user typed. Three commands — `backups prune`, `rollback`, and `unlock` — accept `--codex` and do nothing with it: they act on shared state, and the release that makes them scope-aware (`1.1.3`) is the one that introduces the scope table needed to refuse it.
+`--codex` is global and accepted by every command except `config compact`, which rewrites Claude provider records and has no Codex form, and the three shared-state commands. Naming the default must not fail, so it carries almost no refusal surface; it exists so a command line reads the same whichever target it picks. `--claude --codex` names two different targets and is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule — letting `--claude` win as the "more specific" flag would silently ignore a flag the user typed.
+
+`backups prune`, `rollback`, and `unlock` refuse both target flags in their own right, with a sentence that says why: they act on one `backups/` tree, one `latest.json`, and one lock. There is no smaller answer to "which target" for them, so a flag is not a narrowing but a contradiction.
 
 `--full` and `--dry-run` follow the same rule for the same reason: the parser accepts a global boolean anywhere, so each is refused with `INVALID_ARGUMENT` on any command that would ignore it. `--full` applies only to `add --claude`, and `--dry-run` only to `config compact --claude`. The check runs before the Claude path is entered, so `aps switch --claude --full` is refused too. Accepted-and-ignored is the dangerous reading: `aps backups prune --dry-run` would otherwise delete real backups under a flag that promised a preview.
 
 `--force`, `--merge`, `--overwrite`, `--create-profile`, `--full`, and `--dry-run` are true boolean flags: they never consume the token after them, and they are position-independent, so `aps --claude list` resolves the same way as `aps list --claude`.
 
 One consequence is worth naming: because these tokens are torn out of `argv` before the option pass runs, a boolean flag used where an option *value* was intended becomes the literal string `"true"` rather than being rejected. In `aps edit p --note --json`, the note is recorded as the string `"true"` and `--json` still selects the JSON envelope.
+
+## Target Scope
+
+Every command declares how many targets it covers. There are five scopes, and the flag that a command accepts follows from its scope:
+
+| Scope | Commands | What a target flag means |
+|---|---|---|
+| Switchable | `add`, `switch`, `list`, `show`, `current`, `remove` | `--claude` picks the Claude code path; Codex is the default, and `--codex` names it |
+| Codex-only | `init`, `migrate`, `setup`, `edit`, `import`, `export`, `config show`, `config list-profiles` | `--claude` is refused; `--codex` is accepted and changes nothing |
+| Claude-only | `config compact` | `--claude` is required, not optional |
+| Both | `status`, `doctor`, `backups list` | A flag **narrows** the report instead of choosing a code path; a bare invocation covers both |
+| Shared | `backups prune`, `rollback`, `unlock` | Both flags are refused — one backups tree, one pointer, one lock |
+
+Scope and routing are different questions, and the `Both` row is where they part. `--claude` is *accepted* by `status`, `doctor`, and `backups list`, but those commands do not route to a Claude handler: no Claude handler could produce the whole answer, since the whole answer is "here is Codex, here is Claude, here is the lock they share".
+
+The consequence for `--codex-dir`: on a `Both` command, `--codex-dir <path>` together with `--claude` is refused with `INVALID_ARGUMENT`. The directory is part of what the command was asked to report, so naming it and narrowing to Claude in the same breath is a contradiction rather than a refinement.
+
+```bash
+aps doctor                          # both targets, one report
+aps doctor --claude                 # Claude only; no Codex file is read, no probe is run
+aps doctor --codex                  # Codex only
+aps doctor --claude --codex-dir ~/.codex   # refused: the directory contradicts the narrowing
+```
+
+An out-of-scope target is not read at all. `aps doctor --claude` never opens `config.toml` and never runs the Codex CLI probe, so a machine without Codex installed gets no Codex findings rather than findings about an installation it does not have. An in-scope target you never configured contributes no issue and does not make the run unhealthy; the payload says `"configured": {"status": "ok", "value": false}` about it.
 
 ## Primary Workflow (Codex)
 
@@ -80,7 +109,7 @@ Provider settings tend to overlap almost entirely. `agent-provider-switch.json` 
 
 ```json
 {
-  "version": "1.1.2",
+  "version": "1.1.3",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -135,9 +164,17 @@ Shows one provider record.
 
 Reads the current top-level `model` and `model_provider` from `config.toml` and maps it back to a managed provider when possible. With `--claude`, compares the active `~/.claude/settings.json` identity fields against registered profiles.
 
-### `status`
+### `status [--codex] [--claude]`
 
-Reports target Codex directory, tool-home root, current model route, mapping state, auth projection state, warnings, and next step. It does not report bridge runtime health.
+Reports the Codex directory, the tool-home root, the current model route and the record it maps to, the auth projection state, warnings, and a next step. It does not report bridge runtime health.
+
+It covers both targets at once, so a Claude-only machine gets a status report too. A bare `aps status` reports Codex *and* Claude: the payload carries a `codex` and a `claude` section, and the envelope's `target` is `null` because two targets are in scope — read `targets` there, which is the authoritative field. `--codex` reports the Codex section and omits `claude` entirely; `--claude` reports `claude` and omits `codex`.
+
+Each section has the same shape (see [Report and state shapes](#report-and-state-shapes)), and the projection-specific fields live *inside* the section they belong to rather than beside it: `currentModel` at the top level of a two-target report could not say whose model it was naming. A target you have never configured is still reported — `configured: {status: "ok", value: false}`, `providers: {status: "ok", value: 0}` — so "no providers yet" reads differently from "there is something here and it is wrong". A count that could not be obtained is `unavailable`, never zero.
+
+The identity question is asked once per target and answered in `matching`. For Codex that is the live `model_provider` mapped back to the records whose stored profile is the same id; for Claude it is the [identity paths](#report-and-state-shapes) compared against every record's **resolved** settings, authentication included. `matching` is `not-activated`, `unmanaged`, `managed`, or `ambiguous`, and `activeProvider` is non-null only for `managed` — several candidates are reported as candidates rather than collapsed to the first of them.
+
+The `claude` section carries `settingsStatus` — `"absent"`, `"invalid"`, or `"ok"` — with `settingsInvalidReason` when the file could not be read, and the per-provider rows the human view prints. `status` reports and `doctor` diagnoses, so a corrupt `settings.json` is a **successful** `status` (exit `0`) with `settingsStatus: "invalid"` and `matching` `unavailable`, and a `doctor` finding. The two commands answering the same file differently is the split they exist to keep. `status` also carries the same `issues` and `notes` so the reasons for an incomplete reading are visible without a second command.
 
 ### `config show`
 
@@ -206,15 +243,23 @@ Exports current `providers.json` to an explicit file. Use `--force` to overwrite
 
 The payload reports `count`, `secretCount` (records with a non-empty `apiKey`), and `containsSecrets`. When `containsSecrets` is true, the command emits a warning that the export contains API keys in plaintext and must not be committed. There is no automatic redaction mode.
 
-### `backups list`
+### `backups list [--codex] [--claude]`
 
-Lists managed backup manifests newest first.
+Lists managed backup manifests newest first. Both targets share one `backups/` directory, so this is one listing with a `target` label on each entry rather than two listings.
+
+Entries read `codex`, `claude`, `mixed`, or `unknown`. Classification is about **which operation wrote the backup**: it looks at the target recorded in the manifest, then a `claude-` operation prefix, then a known Codex operation name, and finally whether the files a manifest holds are inside the Claude directory or the Codex directory. Manifests written before the label existed classify the same way, so an older backup is not reported as unknown merely for being old. The tool home decides nothing: `claude-providers.json` lives there, and a path matching neither runtime directory reads `unknown` rather than being guessed at, so a confident wrong answer is never printed in place of an admitted gap.
+
+This label and `rollback`'s `data.targets` answer different questions from the same manifest. Here it is *what the backup belongs to* — the operation that produced it — and it is read from metadata first. `rollback` reports *what a restore overwrites*, read from the restore paths alone. They agree for every manifest this tool writes and can disagree for a hand-edited one, in which case the restore's answer is the one that describes what is about to happen to your files.
+
+`--codex` and `--claude` filter the listing; a bare call lists both. The two labels that are not a single target are treated by what they mean rather than by name: `mixed` touches both targets' files, so it appears in **both** narrowed lists, while `unknown` touches nothing that could be attributed and appears only in the unfiltered one. Leaving `mixed` out of a narrowed list would hide a backup that the rollback you are about to run can overwrite. `count` is the number of entries actually returned.
 
 ### `backups prune [--keep <count>]`
 
 Deletes old backup directories, newest-first, keeping `count` (default `20`). `--keep` must be a positive integer; a missing value, `true`, `0`, a negative number, and any trailing junk are all `INVALID_ARGUMENT`. `0` is refused rather than read as "delete everything", because that is the reading that turns a typo into data loss.
 
 A directory that any surviving manifest still references is never deleted, because rollback resolves through it — the protected set is derived from every manifest, not only the newest. Directories whose manifest is missing or unreadable are reported rather than deleted. The same retention rule runs automatically after every successful mutation, and each mutating command reports how many backups retention removed.
+
+It prunes one `backups/` tree shared by both targets, so `--codex` and `--claude` are both refused with `INVALID_ARGUMENT` rather than accepted and ignored.
 
 Backup directory names carry zero-padded milliseconds (`YYYYMMDD-HHmmssSSS`) and are created exclusively, so two mutations in the same second no longer overwrite each other. A mutation that fails and rolls back successfully removes its own backup directory.
 
@@ -226,6 +271,7 @@ Clears the lock left behind by a process that no longer exists. Codex and Claude
 - A live owner is refused with `LOCK_CONFLICT`; `--force` clears it regardless, which is the documented path for a recycled pid.
 - No lock present is success, so the command is idempotent.
 - It runs without a Codex directory, because the lock lives in the tool home.
+- Both target flags are refused with `INVALID_ARGUMENT`: the lock it clears is the one both targets share, so neither flag names a smaller operation.
 
 There is no TTL-based takeover: a slow `migrate` can exceed any timer, so a pid that looks live is treated as live and the failure is fail-closed.
 
@@ -233,11 +279,49 @@ There is no TTL-based takeover: a slow `migrate` can exceed any timer, so a pid 
 
 Restores the latest managed backup or a specific backup id.
 
-Every restore path must resolve inside the managed roots supplied by the caller — the tool home, the Codex directory, and the Claude directory. A manifest naming a path outside those roots is rejected with `ROLLBACK_PATH_REJECTED` and nothing is written. Both targets share one `backups/` directory and one `latest.json`, so a Codex `rollback` may legitimately restore a Claude settings file.
+Every restore path must resolve inside the managed roots supplied by the caller — the tool home, the Codex directory, and the Claude directory. A manifest naming a path outside those roots is rejected with `ROLLBACK_PATH_REJECTED` and nothing is written. Both targets share one `backups/` directory and one `latest.json`, so a Codex `rollback` may legitimately restore a Claude settings file; the payload reports which targets it actually restored under `data.targets`. Both target flags are refused with `INVALID_ARGUMENT`, for the same reason: there is one pointer, so "which target" is answered by the backup that is restored, not by the invocation.
 
-### `doctor`
+`data.targets` is derived from the paths the restore is about to write, never from the manifest's recorded target or operation name. That is deliberate: a manifest can name one target and hold another's files, and in that case the question worth answering is what the command is changing, not what the snapshot claims to be. A backup holding only tool-home files — a registry snapshot — reports `[]`, because it overwrites neither target's runtime state. Compare `backups list`, which labels the *operation* from the metadata; the two differ only for a manifest this tool did not write.
 
-Runs issue-first diagnostics across config, providers, auth projection, route drift, lock state, and Codex CLI availability. A lock is reported as an issue only when a lock file is actually present: `LOCK_STALE` when the recorded owner is gone, `LOCK_OCCUPIED` when it is still running. Both carry the pid, operation, hostname, and start time, and the next step names `aps unlock` (or `--force`).
+### `doctor [--codex] [--claude]`
+
+Runs issue-first diagnostics across both targets: for Codex, the registry, `config.toml`, `auth.json`, and — for an activated target — the projection checks and the CLI probe; for Claude, the provider registry and the live `settings.json`. A bare `aps doctor` runs both and every issue line is prefixed `[codex]` or `[claude]` so one run reads as one report; a narrowed run prints no prefix, because there is nothing to disambiguate.
+
+Three kinds of answer, kept apart on purpose:
+
+- **issues** are diagnosed faults, and `healthy` reads them.
+- **notes** are worth printing and are not faults. They arrive in `data.notes`, are printed after the issues under their own heading, and never lower health: `REDUNDANT_DELETION_MARKER` and `CONFIGURATION_DRIFT`.
+- **states** describe the installation without judging it — activation, management, ambiguity, lock ownership. A valid settings file that matches no record and a lock held by a running operation are both states. Folding either into `issues` would fail a run over a machine that is working, which is how a user learns to ignore the report.
+
+Two rules make the two-target default safe to run anywhere:
+
+- **A target you have never configured contributes no issue** and does not make the run unhealthy, so a fresh tool home is healthy. `configured` is a reading, and its evidence is a file: the registry, an actual runtime configuration file, or a target defaults block. An empty directory proves nothing, so a `~/.codex` some other tool created does not count. This holds however the target entered scope: `aps doctor --codex` on a machine with no Codex state answers `configured: {status: "ok", value: false}` and is healthy, because the flag chooses what to report on and does not assert that the target must exist. *Malformed* files still count as evidence — the file is there, whatever it says.
+- **A target out of scope is not read at all.** `--claude` opens no Codex file and runs no Codex CLI probe, so a machine without Codex is not reported as having a Codex problem.
+
+`healthy` is three-valued, and the third value is not a hedge: `false` when any selected-target or shared issue exists, `true` when the health-relevant checks completed without issues, and `null` when they could not be completed *and* nothing that ran found a fault — which is not the same as a target that was inspected and is fine. `complete` says whether every planned reading was obtainable. A report can be successful, unhealthy, and incomplete at once.
+
+Every issue carries the `target` it belongs to. The one exception is a lock: it is inspected exactly once under every scope and reported with `target: null`, because one lock blocks writes for both targets. Only a lock that cannot be attributed to a running operation is a finding — `LOCK_STALE` when the recorded owner is gone, `LOCK_ABNORMAL` when the record cannot be attributed at all — and both carry the pid, operation, hostname, and start time with a next step naming `aps unlock` (or `--force`). A lock held by a running operation is `data.shared.lock: {status: "ok", value: "busy"}` and no finding at all: a background `aps` run must not make `doctor` pronounce the install broken.
+
+**Absence is never a finding.** A missing `config.toml`, a missing registry, and a missing `settings.json` are states the readings carry, so no issue is raised for any of them. The Claude side is the clearest case:
+
+| `claude-providers.json` | `settings.json` | Reported |
+|---|---|---|
+| absent, and no Claude directory | not read | nothing — `configured` is `{status: "ok", value: false}` |
+| absent | absent | `providers: 0`, `matching: not-activated` — no issue |
+| unparsable | not read | `PROVIDERS_PARSE_ERROR`; readings that depend on the registry are `unavailable`, and the rest of the report still runs |
+| valid | absent | `matching: not-activated` — no issue |
+| valid | present but unparsable, or not a JSON object | `CLAUDE_SETTINGS_INVALID` — **not** `UNMANAGED_ACTIVE_PROFILE` |
+| valid, empty | valid, matching nothing | `matching: unmanaged` — a state, not a fault |
+| valid, non-empty | valid, matching a record | `matching: managed` |
+| valid, non-empty | valid, matching several records | `matching: ambiguous`, with every candidate enumerated |
+
+A candidate that matches on identity but differs elsewhere — a permission, a plugin list — is `managed` with `differencePaths`, and the difference is a `CONFIGURATION_DRIFT` note. A record's `env` and `model` are checked as **resolved** against `claudeDefaults`, not as stored: a stored `null` is a deletion marker — `{env: null, model: null}` is how a record that strips both defaults is written — so it is not a wrong type. A record that deletes a key the current defaults no longer set is an `REDUNDANT_DELETION_MARKER` note, and `config compact --claude` is the tidy-up.
+
+The Codex checks that need a runtime are gated on activation, which is a top-level `model_provider` in `config.toml`. A registry with no runtime configuration is a *prepared* target: it owes no `config.toml` and no installed CLI, so neither a missing file nor a missing `codex` on `PATH` is reported for it. There is no finding for a `config.toml` without a selector — that is `not-activated`, not a fault.
+
+A finding on one target never suppresses the other's. Each side is composed independently, so an unparsable Claude registry still leaves the Codex findings in the report, and a malformed `claudeDefaults` block — a Claude issue — does not stop the Codex checks or the shared file's own raw checks. When the shared config file cannot be read at all, the finding is `SHARED_CONFIG_INVALID` and only the readings that depend on it become `unavailable`.
+
+`aps doctor --codex` is the invocation a Codex-only user should use; the bare form would also report on the Claude directory, which is now a supported thing to ask about but not what that user meant. `aps doctor --claude` is new in `1.1.3`.
 
 ### `setup`
 
@@ -276,18 +360,65 @@ chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/au
 {
   "ok": true,
   "command": "status",
-  "target": "codex",
+  "targets": ["codex", "claude"],
+  "target": null,
   "data": {},
   "warnings": [],
   "error": null
 }
 ```
 
-`target` is `"codex"`, `"claude"`, or `null` when no command resolved — the help, version, and pre-dispatch failure paths have no target to name. It is written on the failure envelope too, so a caller reading an error envelope does not have to infer which target the invocation was about from the error code.
+`targets` is the authoritative field: it names every target the invocation covered. It is `["codex"]` or `["claude"]` when one is in scope, `["codex", "claude"]` for a bare `status`, `doctor`, or `backups list`, and `[]` for a command whose targets are shared or whose flags were refused before anything resolved.
 
-A failure that happened *after* the target resolved reports that target: `aps switch --claude missing --json` fails with `PROVIDER_NOT_FOUND` and `"target": "claude"`. A failure that *is* the resolution failing reports `null`, because no target was settled on — `aps status --claude --json` (a command with no Claude path) and `aps list --claude --codex --json` (two contradictory flags) both fail with `INVALID_ARGUMENT` and `"target": null`. `null` therefore means "no target was resolved", never "Codex was assumed".
+`target` is `singleTarget(targets)` — the one target's id, or `null` when the list does not hold exactly one. It is `null` for a bare multi-target command because there genuinely are two targets, and it is `null` on a refusal raised by the flags because nothing was resolved; `targets: []` distinguishes the second case. Writing it on the failure envelope too means a caller reading an error does not have to infer which target the invocation was about from the error code.
+
+A failure that happened *after* the target resolved reports that target: `aps switch --claude missing --json` fails with `PROVIDER_NOT_FOUND` and `"target": "claude"`. A failure that *is* the resolution failing reports `null`, because no target was settled on — `aps init --claude --json` (a command with no Claude path) and `aps list --claude --codex --json` (two contradictory flags) both fail with `INVALID_ARGUMENT`, `"target": null`, and `"targets": []`. `null` therefore means "no target was resolved", never "Codex was assumed".
 
 **An error code names a condition, never a target.** `PROVIDER_NOT_FOUND` covers a missing Codex provider and a missing Claude provider alike; the `message` says which ("Claude provider "ghost" was not found."), and `target` says which line the invocation was on. Two codes that differ by one character are kept distinct on purpose: `PROVIDER_ALREADY_EXISTS` means a *record* with that name is taken, and `PROVIDERS_ALREADY_EXISTS` means the registry *file* already exists. A payload does not repeat the target: `data.target` was removed in `1.1.2`, so read it from the envelope.
+
+Error codes and `doctor` issue codes are separate vocabularies with separate jobs. An error code is a command that failed; an issue code is a finding a command reported successfully. `CLAUDE_SETTINGS_NOT_FOUND` was deleted as an error code in `1.1.2` because nothing threw it, and `1.1.3` does not bring it back under either name: an absent `settings.json` is a *state* — `activation: not-activated` — not a diagnosis, so nothing produces that string any more. `CLAUDE_SETTINGS_INVALID` covers the case it was usually confused with, a file that exists and cannot be read, and `REDUNDANT_DELETION_MARKER` is a third kind of string again: a *note*, carried in `data.notes` rather than in `data.issues`, because nothing about it is wrong. Error codes, issue codes, note codes, and the `APS_CLAUDE_DIR` / `CLAUDE_CODE_ATTRIBUTION_HEADER` environment variables are four namespaces that happen to share a prefix; only the first is unified by `1.1.2`, and a grep for `CLAUDE_` across `src/` crosses all four.
+
+### Report and state shapes
+
+`doctor` and `status` publish one section per target — `data.codex` and `data.claude`, each omitted entirely when its target is out of scope — and both sections are written in the same vocabulary:
+
+```ts
+type Reading<T> =
+  | { status: "ok"; value: T }
+  | { status: "absent" }
+  | { status: "invalid"; reason: string }
+  | { status: "unavailable"; reason: string };
+
+type TargetReport = {
+  configured: Reading<boolean>;         // evidence: a registry, a runtime config, or a defaults block
+  paths: Reading<Record<string, string>>;
+  registry: Reading<{ providerCount: number }>;
+  live: Reading<{ present: true }>;
+  activation: Reading<"not-activated" | "activated">;
+  defaults: Reading<{ present: boolean }>;
+  providerCount: Reading<number>;
+  inheritance: Reading<Record<string, number>>;
+  matching: Reading<ProviderMatch>;
+};
+
+type ProviderMatch = {
+  state: "not-activated" | "unmanaged" | "managed" | "ambiguous";
+  activeProvider: string | null;        // non-null for "managed" alone
+  candidates: Array<{ name: string; consistent: boolean; differencePaths: string[] }>;
+};
+```
+
+The four reading states are not collapsible, which is the point of the shape. A `null` field used to mean "no value" for a file that is not there, a file that could not be read, and a count that genuinely is zero, and a report cannot tell a user which of the three to repair. A successful zero is `{status: "ok", value: 0}`; a count that could not be read is `unavailable`, never zero. `null` is not a substitute for an unavailable reading.
+
+`candidates` is never collapsed to a first entry: several identity matches stay `ambiguous` and every one is listed with its own `consistent` and `differencePaths`, because full consistency is not a tie-breaker — a candidate matching the whole document still proves nothing about which credential the live file is meant to carry. Difference paths name paths only and never values, since one of them can be `env.ANTHROPIC_AUTH_TOKEN`.
+
+Claude **identity** is these paths, compared for presence and value exactly:
+
+`model`, `env.ANTHROPIC_BASE_URL`, `env.ANTHROPIC_DEFAULT_HAIKU_MODEL`, `env.ANTHROPIC_DEFAULT_SONNET_MODEL`, `env.ANTHROPIC_DEFAULT_OPUS_MODEL`, `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_API_KEY`, `apiKeyHelper`.
+
+The authentication paths are compared with the rest because two providers can differ only in the credential they authenticate with, and an identity that ignored them reported whichever record happened to sort first. Nothing is normalised — no trailing-slash folding, no model-alias resolution, no `apiKeyHelper` execution — because every normalisation would be a guess about a service this tool does not call. Secret values are compared in memory and never appear in output.
+
+Codex adds `artifacts` (`config` and `auth` as separate readings), `liveState`, `configProfiles`, `currentModel`, and `currentModelProvider`; Claude adds `settingsStatus`, `settingsInvalidReason`, and `providers`, the per-provider rows the human view prints.
 
 Failures render the same envelope to stderr with `ok: false` and a structured error. A failure never writes the envelope to stdout, so a caller that pipes stdout gets nothing rather than a message that looks like a result.
 
@@ -304,14 +435,18 @@ There is no `2` for usage errors and no code map. An unrecognized command exited
 
 ## Current Non-Goals
 
-`1.1.2` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
+`1.1.3` does not provide `login copilot`, `add --copilot`, `bridge start`, `bridge status`, `bridge stop`, Copilot SDK integration, GitHub device-flow login, HTTP proxy bridge, local bridge workers, background runtime services, bridge logs, or automatic migration of old bridge state.
 
-It also does not provide a redacted export mode, Claude Code plugin marketplace management, a generic target abstraction, a TTL-based lock takeover, an audit log for takeovers, or an exit-code taxonomy. There is no command that creates or edits the `claudeDefaults` block, and no export or import of Claude provider records.
+It also does not provide a redacted export mode, Claude Code plugin marketplace management, a TTL-based lock takeover, an audit log for takeovers, or an exit-code taxonomy. There is no command that creates or edits the `claudeDefaults` block, and no export or import of Claude provider records.
+
+The target is a *scope* declared per command, not yet a *descriptor*. There is no table saying how a target stores providers or what it can do — each target keeps its own hand-written code path and record shape. There is no third target, and no `--target <id>` flag: `--claude` and `--codex` are the only target flags. `TargetId` is a closed union of two, so a third target is a type change that fails at every exhaustive switch rather than something that can appear quietly.
 
 ## Fact Sources
 
 Current:
 
+- [PRD 1.1.3](./PRD/agent-provider-switch-prd-v1.1.3.md)
+- [Design 1.1.3](./Design/agent-provider-switch-v1.1.3-design.md)
 - [PRD 1.1.2](./PRD/agent-provider-switch-prd-v1.1.2.md)
 - [Design 1.1.2](./Design/agent-provider-switch-v1.1.2-design.md)
 - [PRD 1.1.1](./PRD/agent-provider-switch-prd-v1.1.1.md)

@@ -2,8 +2,11 @@ import * as fs from "node:fs";
 import { addProvider } from "../app/add-provider";
 import { editProvider } from "../app/edit-provider";
 import { exportProviders } from "../app/export-providers";
+import { buildClaudeReport, claudeSection } from "../app/get-claude-status";
 import { getCurrentProfile } from "../app/get-current-profile";
-import { getStatus } from "../app/get-status";
+import { buildCodexReport } from "../app/get-status";
+import { inspectToolConfig } from "../app/inspect-tool-config";
+import { containsUnavailable, inspectSharedLock } from "../app/report-support";
 import { initCodex } from "../app/init-codex";
 import { importProviders } from "../app/import-providers";
 import { listConfigProfilesView } from "../app/list-config-profiles";
@@ -62,13 +65,9 @@ export async function handleRegisteredCommand(
     return handleClaudeCommand(ctx, parsed, runtime);
   }
 
-  // `config compact` has no Codex form, so reaching here means `--claude` was left off. Refused
-  // before the Codex-directory check below, which would otherwise be what the user hears about.
-  if (ctx.command === "config-compact") {
-    throw cliError("INVALID_ARGUMENT", "config compact requires --claude: it rewrites Claude provider records.", {
-      command: ctx.command,
-    });
-  }
+  // `config compact` used to be refused here, for the `--claude` it was missing. It cannot reach
+  // this line any more: `claude-only` routes to the Claude handler unconditionally, which is where
+  // that refusal now lives.
 
   // The lock lives in the tool home rather than in a Codex directory, so unlock has to run
   // before the codexDir guard below. Requiring a Codex directory to clear a lock would make
@@ -86,6 +85,17 @@ export async function handleRegisteredCommand(
   }
   let setupPaths = createCodexPaths(ctx.options.codexDir);
   const paths = setupPaths;
+
+  // Both targets' paths, and the shared roots a backup is classified against. Resolved once here
+  // rather than per case: `doctor`, `status`, `backups list`, and `rollback` all need the Claude
+  // root, and the root is what a classification must not read from the manifest it is judging.
+  const claudePaths = createClaudePaths(paths.toolHomeDir);
+  const backupRoots = {
+    codexDir: paths.codexDir,
+    claudeDir: claudePaths.claudeDir,
+    toolHomeDir: paths.toolHomeDir,
+  };
+  const claudeDefaults = ctx.toolConfig?.claudeDefaults?.settings ?? null;
 
   switch (ctx.command) {
     case "list":
@@ -107,8 +117,55 @@ export async function handleRegisteredCommand(
     }
     case "current":
       return getCurrentProfile(paths.configPath, paths.providersPath);
-    case "status":
-      return getStatus(setupPaths.toolHomeDir, paths.codexDir, paths.configPath, paths.providersPath, paths.authPath);
+    case "status": {
+      const warnings: string[] = [];
+      const data: Record<string, unknown> = { toolHomeRoot: paths.toolHomeDir };
+      const inspection = ctx.toolConfigInspection ?? inspectToolConfig(paths.toolConfigPath);
+      const issues: Array<Record<string, unknown>> = [];
+      const notes: Array<Record<string, unknown>> = [];
+
+      data.complete = true;
+
+      if (ctx.targets.includes("codex")) {
+        const codex = await buildCodexReport({
+          toolHomeRoot: paths.toolHomeDir,
+          providersPath: paths.providersPath,
+          codexDir: ctx.codexDirUnavailableReason ? null : paths.codexDir,
+          codexDirUnavailableReason: ctx.codexDirUnavailableReason ?? null,
+          defaultsPresent: inspection.reading.status === "ok" && inspection.reading.value.defaultsPresent,
+        });
+        data.codex = codex.section;
+        issues.push(...codex.issues);
+        warnings.push(...codex.warnings);
+      }
+      if (ctx.targets.includes("claude")) {
+        const claude = buildClaudeReport({
+          claudeDir: claudePaths.claudeDir,
+          claudeProvidersPath: claudePaths.claudeProvidersPath,
+          claudeSettingsPath: claudePaths.claudeSettingsPath,
+          defaults: inspection.defaults,
+        });
+        // The Claude section carries its own detail beside the shared readings: which of the three
+        // settings states the live file is in, and the per-provider rows the human view prints.
+        data.claude = claudeSection(claude);
+        issues.push(...claude.issues);
+        notes.push(...claude.notes);
+      }
+
+      issues.push(...(ctx.targets.includes("claude") ? inspection.claudeIssues : []), ...inspection.sharedIssues);
+      const lock = inspectSharedLock(paths.lockPath);
+      data.shared = { toolConfig: inspection.reading, lock: lock.reading };
+      if (lock.finding) {
+        issues.push(lock.finding);
+      }
+
+      data.issues = issues;
+      data.notes = notes;
+      data.healthy = issues.length > 0 ? false : containsUnavailable(data) ? null : true;
+      data.complete = !containsUnavailable(data);
+
+      return { data, warnings };
+    }
     case "init": {
       return initCodex({
         toolHomeDir: setupPaths.toolHomeDir,
@@ -360,14 +417,26 @@ export async function handleRegisteredCommand(
         switchToProvider: switchToProfile,
       });
     }
-    case "doctor":
+    case "doctor": {
+      const inspection = ctx.toolConfigInspection ?? inspectToolConfig(paths.toolConfigPath);
       return runDoctor({
-        codexDir: paths.codexDir,
-        configPath: paths.configPath,
-        providersPath: paths.providersPath,
-        authPath: paths.authPath,
+        targets: ctx.targets,
+        toolHomeRoot: paths.toolHomeDir,
+        codex: {
+          codexDir: ctx.codexDirUnavailableReason ? null : paths.codexDir,
+          codexDirUnavailableReason: ctx.codexDirUnavailableReason ?? null,
+          providersPath: paths.providersPath,
+          defaultsPresent: inspection.reading.status === "ok" && inspection.reading.value.defaultsPresent,
+        },
+        claude: {
+          claudeDir: claudePaths.claudeDir,
+          claudeProvidersPath: claudePaths.claudeProvidersPath,
+          claudeSettingsPath: claudePaths.claudeSettingsPath,
+        },
+        toolConfig: inspection,
         lockPath: paths.lockPath,
       });
+    }
     case "migrate": {
       let codexDir = ctx.options.codexDir;
       const candidates = findCodexDirCandidates(ctx.options.codexDirExplicit ? ctx.options.codexDir : null);
@@ -491,7 +560,11 @@ export async function handleRegisteredCommand(
         replacements: ["init", "migrate"],
       });
     case "backups-list":
-      return listBackupEntries(paths.backupsDir);
+      return listBackupEntries({
+        backupsDir: paths.backupsDir,
+        roots: backupRoots,
+        targets: ctx.targets,
+      });
     case "backups-prune":
       return pruneBackupEntries({
         lockPath: paths.lockPath,
@@ -512,7 +585,9 @@ export async function handleRegisteredCommand(
         // Both targets share one backup directory, so a Codex rollback may legitimately
         // restore a Claude settings file. The Claude root is resolved here, not read from
         // the manifest, because the manifest is the untrusted input.
-        allowedRoots: [paths.toolHomeDir, paths.codexDir, createClaudePaths(paths.toolHomeDir).claudeDir],
+        allowedRoots: [paths.toolHomeDir, paths.codexDir, claudePaths.claudeDir],
+        // The same roots again, read only to report which target the restored backup belonged to.
+        roots: backupRoots,
         backupId: parsed.positionals[0] ?? null,
       });
     default:

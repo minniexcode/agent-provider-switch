@@ -49,13 +49,16 @@ module.exports = {
     {
       name: "status names each health state it can be in",
       run() {
-        // Incomplete: the registry does not exist at all.
+        // Not activated: neither the registry nor config.toml exists. The health line names the
+        // state instead of asking for a file, because there is no fault here to repair — the
+        // summary line underneath already says the report is healthy.
         const bare = createBareSandbox();
-        const incomplete = runCli(bare, ["status"]);
-        assert.equal(incomplete.status, 0, incomplete.stderr);
-        assert.equal(lineFor(incomplete.stdout, "runtime health"), "incomplete local state");
-        assert.equal(lineFor(incomplete.stdout, "mapped provider"), "(unmanaged or unresolved)");
-        assert.equal(lineFor(incomplete.stdout, "provider path"), "unmanaged route");
+        const unconfigured = runCli(bare, ["status"]);
+        assert.equal(unconfigured.status, 0, unconfigured.stderr);
+        assert.equal(lineFor(unconfigured.stdout, "runtime health"), "not activated");
+        assert.equal(lineFor(unconfigured.stdout, "mapped provider"), "(not activated)");
+        assert.equal(lineFor(unconfigured.stdout, "provider path"), "unmanaged route");
+        assert.equal(lineFor(unconfigured.stdout, "health"), "healthy");
 
         const sandbox = createSandbox();
         // A clean config, not the fixture: the fixture's legacy `[profiles.*]` sections are issues,
@@ -123,13 +126,14 @@ module.exports = {
         assert.match(ambiguous.stdout, /^Warning: Current model provider "shared" is shared by multiple providers/m);
 
         // The branch below that one: nothing active, and no warning to outrank it. A registry with
-        // no config.toml at all is the combination that reaches it — every config.toml state that
-        // has no active provider also raises a warning.
+        // no config.toml at all is the combination that reaches it — an empty registry is a
+        // determinate empty candidate set, not an unknown one, so this is `not activated` rather
+        // than an unresolved reading.
         const idle = createSandbox();
         const idleStatus = runCli(idle, ["status"]);
-        assert.equal(lineFor(idleStatus.stdout, "runtime health"), "incomplete local state");
+        assert.equal(lineFor(idleStatus.stdout, "runtime health"), "not activated");
         assert.match(idleStatus.stdout, /^  warnings: 0$/m);
-        assert.equal(lineFor(idleStatus.stdout, "mapped provider"), "(unmanaged or unresolved)");
+        assert.equal(lineFor(idleStatus.stdout, "mapped provider"), "(not activated)");
         assert.equal(lineFor(idleStatus.stdout, "next step"), "run `aps switch <provider>` after adding or adopting a managed provider");
 
         // Legacy wiring diverts the next step from the generic one, because reprojecting is the
@@ -157,9 +161,17 @@ module.exports = {
 
         // A resolved provider short-circuits the candidate list, so the ambiguity fallback is
         // unreachable from a healthy tree — asserted here so the two paths stay distinguishable.
+        // The identity question is answered once, by `matching`, so the name is read from there
+        // rather than from a second field that could disagree with it.
         const status = runOk(sandbox, ["status", "--json"]);
-        assert.equal(status.json.data.provider, "gamma");
-        assert.equal(status.json.data.activeProviderResolvable, true);
+        assert.deepEqual(status.json.data.codex.matching, {
+          status: "ok",
+          value: {
+            state: "managed",
+            activeProvider: "gamma",
+            candidates: [{ name: "gamma", consistent: true, differencePaths: [] }],
+          },
+        });
 
         const human = runCli(sandbox, ["status"]);
         assert.equal(lineFor(human.stdout, "mapped provider"), "gamma");
@@ -264,7 +276,7 @@ module.exports = {
 
         const leaked = runCli(sandbox, ["add", "gamma", "--profile", "gamma", "--model", "gpt-5-mini", "--api-key", secret, "--base-url", "https://gamma.example/v1", "--note", secret]);
         assert.equal(leaked.status, 1, "a duplicate add must fail");
-        assert.match(leaked.stderr, /^INVALID_IMPORT_FILE: /m);
+        assert.match(leaked.stderr, /^PROVIDER_ALREADY_EXISTS: /m);
         assert.doesNotMatch(leaked.stderr, new RegExp(secret), "a secret must not survive into a failure rendering");
       },
     },

@@ -131,6 +131,44 @@ function collectInherited(defaults: Settings, overrides: Settings, prefix: strin
 }
 
 /**
+ * Lists the dotted paths where an override's `null` deletes nothing, because the defaults no
+ * longer set that key.
+ *
+ * The deletion marker is a stored instruction about the defaults block, so it goes stale the
+ * moment the block changes. Nothing else reports it: `switch` writes exactly what the merge
+ * produces and both sides then agree, so the key is simply absent from a file the user believes
+ * sets it. Same shape as {@link collectInheritedPaths} — paths and no values.
+ *
+ * A `null` over a key the defaults still set is doing its job and is not reported, and a key that
+ * sits under no default object at all is reported, because `null` there deletes nothing either.
+ */
+export function collectOrphanedDeletions(
+  defaults: Settings | null | undefined,
+  overrides: Settings | null | undefined
+): string[] {
+  const paths: string[] = [];
+  collectOrphaned(defaults ?? {}, overrides ?? {}, "", paths);
+  return paths.sort();
+}
+
+function collectOrphaned(defaults: Settings, overrides: Settings, prefix: string, paths: string[]): void {
+  for (const [key, value] of Object.entries(overrides)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    const inherited = defaults[key];
+
+    if (value === null) {
+      if (inherited === null || inherited === undefined) {
+        paths.push(path);
+      }
+    } else if (isPlainObject(value)) {
+      // Recursed with an absent default rather than skipped: a `null` nested under a key the
+      // defaults do not set deletes nothing for the same reason a top-level one does.
+      collectOrphaned(isPlainObject(inherited) ? inherited : {}, value, path, paths);
+    }
+  }
+}
+
+/**
  * Lists the dotted paths in `full` that `diffClaudeSettings` drops because they equal a default.
  * Same shape as {@link collectInheritedPaths}: paths and no values. An empty object that sits over
  * a non-empty default object is reported as its own path, since it contributes no leaves but is

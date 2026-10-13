@@ -48,6 +48,7 @@ export async function switchProvider(args: {
     backupsDir: args.backupsDir,
     latestBackupPath: args.latestBackupPath,
     operation: "switch",
+    target: "codex",
     files: [
       { absolutePath: args.authPath, relativePath: "auth.json" },
       { absolutePath: args.configPath, relativePath: "config.toml" },

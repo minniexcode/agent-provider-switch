@@ -4,9 +4,11 @@
 
 It keeps `agent-provider-switch` tool state separate from the target runtime directories, so managed providers, backups, and runtime projection are handled through explicit commands instead of manual file edits.
 
-Current package version: `1.1.2`
+Current package version: `1.1.3`
 
-**`1.1.2` is a breaking `--json` release.** Error codes no longer name a target, so the five `CLAUDE_*` codes are renamed onto the ones the Codex line already used, and the duplicated `data.target` payload field is gone. Every refusal is the same refusal, with a different code string; exit codes and messages are unchanged. Read the [migration table](./CHANGELOG.md), or read `target` on the envelope — that is the field that now says which line a failure belongs to.
+**`1.1.3` makes the target a fact about the command, and it breaks three things.** `doctor`, `status`, and `backups list` now report on both targets in one run and narrow with `--codex` / `--claude`, so `target` on the envelope is `null` for a bare multi-target command and `targets` is the authoritative field. `doctor` no longer reports findings for a target you never set up, and `backups prune`, `rollback`, and `unlock` refuse both target flags because they act on state the targets share. Read the [migration table](./CHANGELOG.md).
+
+`1.1.2` is a breaking `--json` release. Error codes no longer name a target, so the five `CLAUDE_*` codes are renamed onto the ones the Codex line already used, and the duplicated `data.target` payload field is gone. Every refusal is the same refusal, with a different code string; exit codes and messages are unchanged.
 
 `1.1.1` makes the target explicit. Every command acts on Codex unless `--claude` says otherwise, and that default now has a name: `--codex`. The two name different targets and cannot be combined, so passing both is refused rather than resolved by a precedence rule. The JSON envelope gains a `target` field — `"codex"`, `"claude"`, or `null` when no command resolved — written on failures as well as successes. No command gains or loses a target.
 
@@ -87,7 +89,7 @@ Provider settings tend to overlap almost entirely: the same dozen env flags, the
 
 ```json
 {
-  "version": "1.1.2",
+  "version": "1.1.3",
   "claudeDefaults": {
     "settings": {
       "env": {
@@ -168,9 +170,26 @@ touches them. To fix them all at once:
 chmod -R go-rwx ~/.config/agent-provider-switch ~/.codex/config.toml ~/.codex/auth.json ~/.claude/settings.json
 ```
 
+## Both Targets At Once
+
+`status`, `doctor`, and `backups list` cover both targets in one run, so a Claude-only user has a health check and a state report of their own.
+
+`aps doctor` runs the Codex check set and the Claude check set together, and `--codex` / `--claude` narrows it to one. Two rules follow from that:
+
+- **A target you never set up contributes no findings and cannot make the run unhealthy.** `configured` is a reading — `{"status": "ok", "value": false}` is how the payload says so — and a fresh tool home is healthy. The evidence has to be a file: a registry, an actual runtime configuration file, or a defaults block. An empty directory proves nothing, so a `~/.codex` that exists because something else created it does not count, and no missing-config finding follows from it.
+- **`--claude` reads no Codex file and never runs the Codex CLI probe.** A machine with no Codex CLI is not told it has a Codex problem.
+
+Every issue names the target it is about. The one exception is a stuck lock, which is reported once with `target: null`, because one lock blocks writes on both targets. A lock held by a *running* operation is a state rather than a finding — `{"status": "ok", "value": "busy"}` — so a background `aps` run cannot make `doctor` pronounce the install broken.
+
+A finding is not the same thing as a state, and the report keeps them apart. `healthy` is `false` when an issue was found, `true` when the checks completed cleanly, and `null` when they could not be completed *and* nothing that ran found a fault — which is not the same as a target that was inspected and is fine. Every field in a target's section is a reading — `{"status": "ok", "value": …}`, `absent`, `invalid`, or `unavailable` — so "there is no such file", "it could not be read", and "the answer really is zero" are three different payloads instead of one `null`. The identity question — which provider the live configuration is pointed at — is answered once per target in `matching`, which enumerates every candidate rather than silently taking the first.
+
+`aps status --claude` reports the Claude registry and the live `settings.json` and omits the Codex fields entirely. A bare `aps status` reports both, and `target` is then `null` — read `targets` on the envelope, which is the authoritative field; `target` is non-null exactly when one target is in scope.
+
+`aps backups list` labels each entry `codex`, `claude`, `mixed`, or `unknown`, and `--codex` / `--claude` filters the listing. The label is worked out from the target the mutation recorded, then the operation name, then which runtime directory the backed-up files live in — so backups written before `1.1.3` still classify. A manifest that cannot be classified reads as `unknown` rather than being guessed at, which is the safe direction: the label is what tells you what a `rollback` is about to restore. `mixed` holds files from both targets, so it appears in both narrowed lists; `unknown` appears only in the unfiltered one.
+
 ## Commands
 
-Current `1.1.2` command surface:
+Current `1.1.3` command surface:
 
 ```text
 aps init
@@ -178,7 +197,7 @@ aps migrate
 aps list [--claude]
 aps show <provider> [--claude] [--reveal]
 aps current [--claude]
-aps status
+aps status [--codex] [--claude]
 aps config show
 aps config list-profiles
 aps config compact --claude [--dry-run]
@@ -189,11 +208,11 @@ aps switch <provider> [--claude]
 aps remove <provider> [--claude] --force
 aps import <file>
 aps export <file>
-aps backups list
+aps backups list [--codex] [--claude]
 aps backups prune [--keep N]
 aps unlock [--force]
 aps rollback [backup-id]
-aps doctor
+aps doctor [--codex] [--claude]
 aps setup
 ```
 
@@ -201,7 +220,19 @@ aps setup
 
 All commands accept `--json` for the standard JSON envelope where supported by the parser, and `--codex-dir <path>` to target a specific Codex directory. `--codex-dir` requires a path: a following token that starts with `-` is refused rather than taken as the value.
 
-Every command acts on Codex unless `--claude` says otherwise. `--codex` names that default, and the two flags contradict each other: passing both is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule. `--codex` is accepted wherever Codex state is what the command acts on; the one exception is `aps config compact`, which rewrites Claude provider records and refuses it.
+Every command acts on Codex unless `--claude` says otherwise. `--codex` names that default, and the two flags contradict each other: passing both is refused with `INVALID_ARGUMENT` rather than resolved by a precedence rule.
+
+Three commands hold state the targets share, and neither flag is a smaller answer for them: `backups prune`, `rollback`, and `unlock` refuse both, and the refusal says why. `aps config compact` is the one command with no Codex form, so it requires `--claude` rather than accepting it.
+
+| Commands | Targets | Flag meaning |
+|---|---|---|
+| `add`, `switch`, `list`, `show`, `current`, `remove` | one | `--claude` picks the Claude code path; the default is Codex |
+| `init`, `migrate`, `setup`, `edit`, `import`, `export`, `config show`, `config list-profiles` | Codex | `--claude` is refused; `--codex` is accepted and changes nothing |
+| `config compact` | Claude | `--claude` is required |
+| `status`, `doctor`, `backups list` | both | a flag narrows the report instead of choosing a code path; bare means both |
+| `backups prune`, `rollback`, `unlock` | shared | both flags are refused |
+
+On the three two-target commands, `--codex-dir` together with `--claude` is also refused: the directory is part of what the command would otherwise report, and naming one contradicts the narrowing.
 
 ## Runtime Projection
 
@@ -292,7 +323,7 @@ A directory that any surviving manifest still references is never deleted, so a 
 
 ## Current Non-Goals
 
-`1.1.2` does not implement or reserve runtime code paths for:
+`1.1.3` does not implement or reserve runtime code paths for:
 
 - A command that creates or edits the `claudeDefaults` block. It is written by hand; `config compact` refuses when it is absent rather than guessing which keys are shared.
 - Export or import of Claude provider records. Both commands are Codex-only.
@@ -303,7 +334,8 @@ A directory that any surviving manifest still references is never deleted, so a 
 - Built-in third-party router packaging.
 - Account systems or cloud sync.
 - Claude Code plugin marketplace management.
-- A target *descriptor* — a table saying how each target stores its providers and what it can do. `1.1.1` names the target and resolves it; the two targets still have their own hand-written code paths. A third target is the task that will need the descriptor.
+- A target *descriptor* — a table saying how each target stores its providers and what it can do. `1.1.3` declares each command's target *scope* and resolves the targets an invocation covers, but the two targets still have their own hand-written code paths, storage repositories, and record shapes. A third target is the task that will need the descriptor, and it is `1.2.0`'s job.
+- A third target. `TargetId` is a closed union of two, so adding one is a type change that fails at every exhaustive switch — the intended shape, and the reason a third target cannot arrive by accident.
 - A `--target <id>` flag. `--claude` and `--codex` are the only target flags.
 - A pluggable provider type system.
 - A TTL-based lock takeover. A slow `migrate` can exceed any timer, so a recycled pid is fail-closed and `aps unlock --force` is the way out.
@@ -330,6 +362,8 @@ npm pack --dry-run
 
 Current fact sources:
 
+- [PRD 1.1.3](./docs/PRD/agent-provider-switch-prd-v1.1.3.md)
+- [Design 1.1.3](./docs/Design/agent-provider-switch-v1.1.3-design.md)
 - [PRD 1.1.2](./docs/PRD/agent-provider-switch-prd-v1.1.2.md)
 - [Design 1.1.2](./docs/Design/agent-provider-switch-v1.1.2-design.md)
 - [PRD 1.1.1](./docs/PRD/agent-provider-switch-prd-v1.1.1.md)

@@ -56,6 +56,26 @@ Managed projection writes:
 
 New managed writes do not create legacy `[profiles.*]` sections.
 
+## Target Scope
+
+The tool serves two targets from one tool home: **Codex**, the default, and **Claude Code**, selected with `--claude`. `src/domain/target.ts` declares `TARGET_SCOPES`, one entry per command id, and it is the only place the answer lives:
+
+| Scope | Commands | Meaning |
+|---|---|---|
+| `switchable` | `add`, `switch`, `list`, `show`, `current`, `remove` | Two code paths; `--claude` picks one, Codex is the default |
+| `codex-only` | `init`, `migrate`, `setup`, `edit`, `import`, `export`, `config show`, `config list-profiles` | `--claude` refused, `--codex` accepted and inert |
+| `claude-only` | `config compact` | `--claude` required; routes to the Claude handler either way |
+| `both` | `status`, `doctor`, `backups list` | Reports on both targets; a flag narrows the report |
+| `shared` | `backups prune`, `rollback`, `unlock` | One backups tree, one pointer, one lock; both flags refused |
+
+**Scope and routing are different questions**, and the `both` row is where they part. `acceptsTargetFlag(id, "--claude")` is true for `switchable`, `claude-only`, and `both`; `routesToClaudeHandler(id)` is true only for the first two, because no Claude handler could produce the whole answer for a command whose answer is "here is Codex, here is Claude, here is the lock they share". `isClaudeCommand()` delegates to the latter.
+
+`selectedTargets(id, options)` answers what an invocation covers: `["codex"]`, `["claude"]`, both ids for a bare `both` command, or `[]` for `shared`. The order is fixed: `executeCommand` runs `assertFlagsApply` (which refuses a flag the command's scope does not accept, the two contradictory flags, and — on `both` — `--codex-dir` alongside `--claude`), then `resolveTarget`, then assigns `ctx.targets`. A refusal therefore renders `targets: []` with `target: null`: it resolved nothing.
+
+The envelope carries `targets` (authoritative) and `target` (`singleTarget(targets)`, non-null exactly when one id is in scope). Handlers read `ctx.targets`; a target out of scope is not probed at all, and an in-scope but unconfigured target still builds its payload so `configured: false` is reported rather than the section being absent.
+
+This is a *scope* table, not a *target descriptor*. Each target keeps its own code path, storage repositories, and record shape. A descriptor — one table declaring how a target stores providers and what it can do — is the task a third target forces, and it is not in this line.
+
 ## Mutations And Backups
 
 Mutating app services run through `runMutation`, acquire the lock, create backups for affected files, perform writes, and roll back when the mutation fails.
@@ -66,13 +86,15 @@ Commands that mutate local state include `init`, `migrate`, `add`, `edit`, `swit
 
 `status` is a lightweight current-state view. `doctor` is issue-first and checks config existence, providers existence, model-provider consistency, auth projection validity, route drift, and Codex CLI availability.
 
+Both cover the two targets and narrow with `--codex` / `--claude`. For Codex the checks above apply; for Claude the registry and the live `settings.json` are checked. An unconfigured target contributes no issue, so a fresh tool home is healthy, and an out-of-scope target is not read — `doctor --claude` runs no Codex probe. Each issue carries its `target`; a leftover lock is the one finding reported once with `target: null`, because it blocks writes for both.
+
 Optional bridge or account-runtime checks are not part of `0.2.1` diagnostics.
 
 ## Error Vocabulary
 
 **An error code names a condition and never a target.** The two lines share one vocabulary: `PROVIDER_NOT_FOUND`, `PROVIDERS_NOT_FOUND`, `PROVIDERS_PARSE_ERROR`, and `PROVIDER_ALREADY_EXISTS` are raised by Codex and Claude code alike. A `CLAUDE_`-prefixed code is not permitted anywhere in `src/`; the invariant is asserted by `tests/error-vocabulary.spec.js`.
 
-What distinguishes the two lines is the envelope's `target` field, written once from the resolved target on both the success and the failure path, plus the `message`, which keeps naming the target where the state calls for it (`Claude provider "x" was not found.`).
+What distinguishes the two lines is the envelope's `targets` field — the authoritative list of targets the invocation covered — plus `singleTarget(targets)` under `target`, plus the `message`, which keeps naming the target where the state calls for it (`Claude provider "x" was not found.`). Both are written on the failure path too. `target` is `null` for a bare `doctor`/`status`/`backups list` (two targets genuinely in scope) and `null` with `targets: []` for a refusal raised by the flags (nothing resolved); the two cases are told apart by `targets`, not by `target`.
 
 Two codes are one character apart and must stay distinct: `PROVIDER_ALREADY_EXISTS` means a record with that name exists, and `PROVIDERS_ALREADY_EXISTS` means the registry file exists.
 

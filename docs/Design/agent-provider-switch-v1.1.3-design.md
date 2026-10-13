@@ -1,319 +1,362 @@
 # agent-provider-switch v1.1.3 Design Document
 
-**Shared-state commands see both targets.** The last of the three `1.1.x` releases and the only one
-that changes what a command does. No stored file changes shape, no command gains or loses a
-capability, and the two targets' storage, record shapes, and services stay exactly where they are.
+This is the implementation design for [the final reviewed v1.1.3 PRD](../PRD/agent-provider-switch-prd-v1.1.3.md).
+It consumes `1.1.1`'s target foundation and `1.1.2`'s error vocabulary. It specifies the required
+contract; implementation and test alignment remain in progress.
 
-Its companions are `docs/Design/agent-provider-switch-v1.1.1-design.md` (the target becomes
-explicit) and `docs/Design/agent-provider-switch-v1.1.2-design.md` (one error vocabulary). It
-consumes both: it reads `TargetId` from `1.1.1` and reports its findings through `1.1.2`'s single
-vocabulary.
+The [review](../Reviews/agent-provider-switch-1.1.x-prd-review.md) records the accepted decisions.
+Breaking changes are authorized for this single-user CLI. Existing source behavior is evidence for
+the implementation audit, not a reason to override the accepted rules.
 
-**Citation convention.** This document names symbols rather than line numbers.
+## 1. Scope before I/O
 
-This release closes no roadmap finding.
-
-## Overview
-
-Three decisions shape everything else.
-
-**One table states each command's target scope, and everything reads it.** `CLAUDE_COMMANDS`, the
-`--claude` guard, and the dispatch decision are three consumers of the same fact today. They become
-one `Record<CommandId, TargetScope>`, so a new command cannot be added without answering the
-question, and `1.2.0` has one table to generalize instead of three.
-
-**A command that cannot narrow refuses the flag.** `backups prune`, `rollback`, and `unlock` operate
-on a shared directory, a shared pointer, and a shared lock. `--claude` there is not a smaller
-answer, it is a question with no answer, so it is refused rather than accepted and ignored.
-
-**A target that was never set up is not a finding.** This is what makes "default both" usable. It is
-also the release's one behaviour change to an existing command, and it is declared as such.
-
-## 1. The scope table
-
-`src/domain/target.ts` (the `1.1.1` module) gains:
+Keep target identifiers and a total scope table in `src/domain/target.ts`:
 
 ```ts
-export type TargetScope = "switchable" | "codex-only" | "claude-only" | "both" | "shared";
-export const TARGET_SCOPES: Record<CommandId, TargetScope>;
-export function scopeOf(command: CommandId): TargetScope;
-export function acceptsTargetFlag(command: CommandId, flag: "--claude" | "--codex"): boolean;
-export function routesToClaudeHandler(command: CommandId): boolean;
-export function selectedTargets(command: CommandId, options: Map<string, string[]>): TargetId[];
+type TargetId = "codex" | "claude";
+type TargetScope = "switchable" | "codex-only" | "claude-only" | "both" | "shared";
+const TARGET_SCOPES: Record<CommandId, TargetScope>;
 ```
 
-`Record<CommandId, TargetScope>` rather than a `Map` built at runtime: a command added to the union
-without a scope entry is a compile error, which is the whole point of the table.
-
-| Scope | Commands | `--codex` | `--claude` | bare |
-|---|---|---|---|---|
-| `switchable` | `add`, `switch`, `list`, `show`, `current`, `remove` | accepted, no-op | selects Claude | Codex |
-| `codex-only` | `init`, `migrate`, `setup`, `edit`, `import`, `export`, `config-show`, `config-list-profiles` | accepted, no-op | refused | Codex |
-| `claude-only` | `config-compact` | refused | required | refused |
-| `both` | `doctor`, `status`, `backups-list` | narrows to Codex | narrows to Claude | both |
-| `shared` | `backups-prune`, `rollback`, `unlock` | refused | refused | shared |
-
-`selectedTargets()` is the only function that reads the flags for a `both` command. It returns
-`["codex", "claude"]`, `["codex"]`, or `["claude"]`; for every other scope it returns the single
-target the command covers, or `[]` for `shared`.
-
-### `CLAUDE_COMMANDS` is deleted
-
-`claude-handlers.ts`'s `CLAUDE_COMMANDS` set, `supportsClaudeTarget()`, and `getClaudeCommandNames()`
-all become derivations of the table and move to `domain/target.ts`. The refusal message that names
-the commands accepting `--claude` still exists; it is now built from `TARGET_SCOPES` instead of from
-a set that had to be kept in step with it by hand. `flag-guards.ts` stops importing from
-`claude-handlers.ts`, which removes the only `commands → commands` import in the guard path.
-
-### Routing is a different question from scope
-
-`isClaudeCommand()` keeps its meaning: "route this dispatch to `handleClaudeCommand`". That is true
-for `switchable` with `--claude` present and for `claude-only`, and it is **false for `both`** —
-`doctor`, `status`, and `backups list` do not have a Claude handler that could produce the whole
-result, and routing them there would answer half the question. So the table drives two predicates
-with different members:
-
-- `routesToClaudeHandler(command)` — `switchable` and `claude-only`, i.e. today's `CLAUDE_COMMANDS`.
-- `acceptsTargetFlag(command, "--claude")` — the above **plus** `both`.
-
-Conflating them is the specific mistake this section exists to prevent: it would either send
-`doctor` to a handler that returns a Claude-only payload, or refuse `--claude` on the one command a
-Claude-only user needs.
-
-## 2. The envelope and the context
-
-`CommandExecutionContext.targets: TargetId[]` replaces `1.1.1`'s `target: TargetId | null`, required
-in the same way, so every construction site is a compile error until it states its answer.
-
-`JsonEnvelope` keeps `target` and gains `targets`:
-
-| Field | Value |
-|---|---|
-| `targets` | The selected targets, `[]` when no command resolved. **Authoritative.** |
-| `target` | The single target when exactly one is selected, otherwise `null`. A convenience alias. |
-
-**This changes the value of `target` for three commands.** In `1.1.1` a bare `aps doctor --json`
-carried `"target": "codex"`, which was true at the time: `doctor` was Codex-only. In `1.1.3` the same
-invocation carries `"target": null` and `"targets": ["codex", "claude"]`, because the fact it
-reports changed in the same release. A consumer reading only `target` and expecting a bare `doctor`
-to answer `"codex"` migrates by reading `targets`; one that passes `--codex` or `--claude` sees the
-same single value it always did. This is a consequence of the feature rather than a separate break,
-and it is stated in the CHANGELOG because `1.1.2` was the release that promised to be the line's
-only breaking one.
-
-## 3. `doctor`
-
-`runDoctor()` is split into `collectCodexIssues()` and `collectClaudeIssues()`, composed by the
-selected targets:
-
-```ts
-runDoctor(args: {
-  targets: TargetId[];
-  codex: { codexDir; configPath; providersPath; authPath };
-  claude: { claudeDir; claudeProvidersPath; claudeSettingsPath };
-  lockPath: string;
-  defaults: Record<string, unknown> | null;
-}): Promise<CommandResult>;
-```
-
-`collectCodexIssues()` is today's body, unchanged. `collectClaudeIssues()` is new:
-
-| Check | Issue code | Raised when |
+| Scope | Command ids | Accepted targets |
 |---|---|---|
-| registry present | `PROVIDERS_NOT_FOUND` | `claude-providers.json` is absent |
-| registry parses | `PROVIDERS_PARSE_ERROR` | the file is not valid JSON, or its shape is invalid |
-| records resolve | `INVALID_CONFIG` | a stored record cannot be resolved against the defaults |
-| settings present | `CLAUDE_SETTINGS_NOT_FOUND` | `settings.json` is absent |
-| active provider managed | `UNMANAGED_ACTIVE_PROFILE` | live settings match no managed provider |
-| deletion marker orphaned | `INVALID_CONFIG` | a record's `null` deletes a default that is no longer there |
+| Switchable | `add`, `switch`, `list`, `show`, `current`, `remove` | Bare Codex, one flag selects one |
+| Codex only | `init`, `migrate`, `setup`, `edit`, `import`, `export`, `config-show`, `config-list-profiles` | Bare/explicit Codex |
+| Claude only | `config-compact` | Explicit Claude required |
+| Both | `doctor`, `status`, `backups-list` | Bare both, one flag narrows |
+| Shared | `backups-prune`, `rollback`, `unlock` | Empty target scope; neither flag accepted |
 
-`CLAUDE_SETTINGS_NOT_FOUND` is reused as an **issue** code. It was deleted from the `ErrorCode`
-union in `1.1.2` as a code with no producer, and this is a different namespace: an issue code is a
-finding inside a successful result, is not type-checked against the union, and is not a failure. The
-name is right for the condition and there is no Codex twin to merge it with, so it is introduced
-here rather than invented twice.
+Derive capability predicates, supported-command messages, and help metadata from this table.
+Remove independent `CLAUDE_COMMANDS` membership as a source of truth. Routing to the Claude
+handler is distinct from accepting `--claude`: Both commands are composed by their report handler,
+not routed to a single-target mutation handler.
 
-**The last row is a real bug class.** A record may carry an explicit `null` that deletes an
-inherited key. If the block changes so that key is no longer a default, the `null` deletes nothing
-and the key is simply absent from the file the user believes sets it. Nothing else reports that,
-because `switch` writes exactly what the merge produces and both sides agree.
+Dispatch order is normative:
 
-**Every issue gains `target`.** An issue about one target's file carries that target; an issue about
-shared state carries `null`. Exactly one check is target-neutral: the lock. It runs whatever the
-selection, because a stale lock blocks writes on both targets, and reporting it twice — once per
-target — would make `issues.length` depend on how many targets happened to be in scope.
+1. Parse and recognize a command without touching files.
+2. Validate target selection and scope, including conflicting flags, Claude-only requirements,
+   and `--claude --codex-dir` on all three Both commands.
+3. Store accepted `targets` in the execution/failure context.
+4. Perform migration, shared-config reading, path resolution, and command execution.
 
-**Skipping is the feature.** `--claude` never calls `probeCodexRuntime()`. On a machine with no
-Codex CLI the un-narrowed run reports `CODEX_NOT_INSTALLED`, which is true and is not something a
-Claude-only user can act on; the narrowed run reports only what they can.
+Rejected selection leaves scope empty. Later I/O/service errors retain the accepted scope.
+Shared commands enter execution with an empty scope. The switchable-command directory-flag policy
+is unchanged by the specific Both-command guard.
 
-### `configured` and `healthy`
+## 2. Envelope and reporting types
+
+Execution context requires `targets: TargetId[]`. Both render paths write:
 
 ```ts
-isTargetConfigured(target: TargetId, paths): boolean;
+targets: TargetId[];
+target: TargetId | null; // sole entry of targets, otherwise null
 ```
 
-- Codex: `providers.json` exists **or** the Codex directory exists.
-- Claude: `claude-providers.json` exists **or** the Claude directory exists.
+Order is Codex then Claude. No requested-target field and no restored `data.target` routing field
+are introduced. A bare Both command has both ids and null alias; Shared commands have an empty
+array and null alias on success or failure.
 
-An unconfigured target runs no checks, contributes no issues, and is reported as
-`configured: false`. It does not affect `healthy`. `healthy` is `true` when the selected targets have
-no issues, so `aps doctor --claude` is healthy whatever the Codex side is doing.
+All six commands' bare aliases change from the legacy `"codex"` routing tag to null. This is a
+breaking contract change, alongside shared-flag and reporting changes, and must be described that
+way in release notes.
 
-**The behaviour change.** A Codex user who has ever run `aps init` has `providers.json`, so their
-diagnostics are byte-identical to `1.1.2`'s. A user with no Codex state at all saw
-`CONFIG_NOT_FOUND` and `healthy: false`; they now see `configured: false` and `healthy: true`. That
-is the correct reading of "this tool has never been used on that target", and it is what allows the
-default to be both targets without making every Claude-only install permanently unhealthy.
+### Explicit availability
 
-The heuristic can misjudge in one direction, deliberately: if `~/.codex` exists but has no
-`config.toml`, the target counts as configured and the missing-config issue is raised. A Codex
-installation that is present and broken is a finding; a Codex installation that was never mentioned
-is not.
+Use a tagged reading for data that can fail independently:
 
-## 4. `status`
+```ts
+type Reading<T> =
+  | { status: "ok"; value: T }
+  | { status: "absent" }
+  | { status: "invalid"; reason: string }
+  | { status: "unavailable"; reason: string };
 
-`getStatus()` keeps its signature and its payload, so every existing top-level field of
-`status --json` keeps its name and position. A new `getClaudeStatus()` returns the Claude section,
-and `handlers.ts` composes:
+type Finding = {
+  code: string;
+  target: TargetId | null;
+  message: string;
+  path?: string;
+};
+```
 
-| Invocation | Payload |
+Absent means confirmed nonexistence; invalid means obtained content failed validation; unavailable
+means the answer cannot reliably be derived, including read failure or invalid dependencies.
+Reasons and findings contain safe messages/paths, never settings or secret values. A damaged file's
+existence can be known even when its content is invalid.
+
+A successful zero count is `{ status: "ok", value: 0 }`. Missing registry is separately represented
+as absent; if its absence is reliably known, a derived provider count can validly be zero.
+A count that could not be read is unavailable, never zero. Null is not a substitute for any
+unavailable reading.
+
+### Doctor and status report shape
+
+Both commands use this common report structure; status fills summary readings and doctor adds the
+deeper applicable checks:
+
+```ts
+type Report = {
+  toolHomeRoot: string;
+  complete: boolean;
+  healthy: boolean | null;
+  issues: Finding[];
+  notes: Finding[];
+  shared: {
+    toolConfig: Reading<{ defaultsPresent: boolean }>;
+    lock: Reading<"free" | "busy" | "abnormal">;
+  };
+  codex?: TargetReport;
+  claude?: TargetReport;
+};
+
+type TargetReport = {
+  configured: Reading<boolean>;
+  paths: Reading<Record<string, string>>;
+  registry: Reading<{ providerCount: number }>;
+  live: Reading<{ present: true }>;
+  activation: Reading<"not-activated" | "activated">;
+  defaults: Reading<{ present: boolean }>;
+  providerCount: Reading<number>;
+  inheritance: Reading<Record<string, number>>;
+  matching: Reading<ProviderMatch>;
+};
+
+type ProviderMatch = {
+  state: "not-activated" | "unmanaged" | "managed" | "ambiguous";
+  activeProvider: string | null;
+  candidates: Array<{
+    name: string;
+    consistent: boolean;
+    differencePaths: string[];
+  }>;
+};
+```
+
+This is a reporting contract, not raw settings export. Codex can report empty inheritance data when
+that concept is inapplicable; its projection-specific state/checks can extend its section with
+equally explicit readings. Claude inheritance counts derive from resolved provider records.
+`paths` includes only reliably resolved relevant paths; failures in some paths must not erase
+other independently known paths (split readings per path if needed). For multi-file Codex runtime
+state, report each artifact's reading separately. Activation depends on active configuration, not
+merely the existence of an auxiliary auth artifact.
+
+Omit unselected target sections. The top-level envelope already states command scope; do not
+duplicate it as another routing field inside report data. The normalized target sections replace
+the earlier flat Codex status layout as a declared reporting-schema break.
+
+`activeProvider` is null for not-activated, unmanaged, and ambiguous states, with `state` giving
+the meaning. If matching cannot run, return an invalid/unavailable reading rather than any of
+those successfully determined states.
+
+`healthy` is false whenever issues exist; true only when health-relevant checks are complete and
+fault-free; otherwise null. `complete` is false when planned readings/checks cannot be obtained.
+Status health concerns its summary checks and does not certify unperformed doctor-only runtime
+checks. A report can be successful, unhealthy, and incomplete simultaneously.
+
+## 3. Independent reads and shared-config dependencies
+
+Storage readers must preserve absent, invalid, and read-error states. Do not collapse them into
+null. Keep file presence probes, raw content validation, effective resolution, and matching
+separate so a failed dependency does not suppress unrelated results.
+
+For reporting, shared-config inspection must separate whole-file readability/root shape from
+field-specific validation:
+
+- File absent: validated absence, no defaults, use normal resolver precedence.
+- File invalid/unreadable: one shared issue; dependent config values unavailable.
+- Valid JSON/root with malformed `claudeDefaults`: one Claude issue when Claude is selected;
+  resolution depending on defaults unavailable. Shared file-level validity remains known, and
+  other validated fields and independent Codex checks remain available. Do not emit unselected
+  target issues or mark a Codex-only report incomplete because unused Claude defaults are invalid.
+- Valid defaults: pass the validated block normally.
+
+Do not weaken mutation config validation globally merely to support reporting. Provide a reporting
+inspection result or split validation paths; mutation commands can retain their strict fail-fast
+config readers.
+
+Codex path precedence is explicit flag > environment > shared config > discovery/default.
+An explicit or environment path does not depend on a broken shared file. Without either, an unreadable
+shared file cannot be treated as if it lacks a configured override; its dependent path is unavailable.
+Known tool-home registry paths and independently resolved Claude paths can still be checked.
+
+Each collector catches expected local storage/content errors, emits an issue for unreadable or
+invalid existing content, marks dependent readings, and continues. Unexpected failures that prevent
+the basic report reach the top-level failure path with accepted scope retained.
+
+Report production succeeds with `ok: true`/exit `0` even when it reports faults or unavailable
+local data. Rejected invocations or inability to produce a basic report yield `ok: false`/exit `1`.
+
+## 4. Configuration evidence, activation, and lock
+
+Configuration evidence uses files/default blocks, not directory existence:
+
+- Codex registry, Codex runtime configuration artifacts such as `config.toml`/`auth.json`, or
+  any supported Codex defaults block.
+- Claude registry, `settings.json`, or a Claude defaults block.
+- Malformed files/blocks still establish evidence; report their validation faults separately.
+- Empty target directories do not establish evidence.
+
+If all evidence sources are reliably absent, configured is false. Any known evidence makes it
+true. Otherwise, if uncertainty prevents a negative conclusion, it is unavailable.
+Explicit target selection does not change these rules.
+
+Absent live configuration means not activated. A prepared registry/defaults-only target does not
+owe a missing-live-file issue. Missing/valid-empty registry means no managed records; valid live
+settings can still be unmanaged. For a partially present multi-file Codex projection, validate
+existing content and run consistency checks whose prerequisites are available; do not classify
+existing broken content as harmless absence.
+
+Doctor's Codex checks retain applicable config/profile/model/auth/projection/runtime validation.
+Run runtime/projection prerequisites only for activated Codex. Skip the runtime probe for
+unconfigured or not-activated Codex and never run it for Claude-only scope. Existing content is
+still validated independently; unsupported/malformed active config remains a fault.
+
+Inspect the shared lock once outside target collectors for every doctor selection:
+free is normal, a valid live owner is busy, and stale/malformed/abnormal ownership is a shared issue.
+Normal busy state does not lower health. Repair advice belongs to the abnormal finding; do not
+turn live occupancy into a fault solely because a mutation would currently be refused.
+
+## 5. Claude validation and a single identity result
+
+Keep raw registry readers for writes and effective settings for reads, as in `1.1.0`.
+Validate the registry container and record shapes before resolution; validate relied-on settings
+on the effective view. The existing `readClaudeSettingsState()` separation of absent/invalid/ok
+must also preserve read failures and validate the fields used by summaries/matching.
+
+For the relied-on fields, non-null `env` must be an object, and non-null model/address/model-routing/
+authentication/helper values must have their supported string types. Preserve the established
+ordinary-null behavior when defaults are absent. A missing/deleted field is allowed; raw null
+deletion under defaults is not an invalid field type. Live root arrays/scalars are invalid.
+
+Do not apply the recursive merge's deletion semantics inside arrays. Redundant deletion markers
+under defaults can become `REDUNDANT_DELETION_MARKER` notes, never issues. Without defaults they
+are ordinary data, not orphaned deletion markers.
+
+### Identity comparison
+
+Create one pure identity/candidate calculation shared by all Claude query and active-marker
+callers. Compare these effective/live paths:
+
+| Dimension | Paths |
 |---|---|
-| `aps status` | every existing Codex field, plus `claude` and `targets: ["codex","claude"]` |
-| `aps status --codex` | every existing Codex field, plus `targets: ["codex"]` |
-| `aps status --claude` | `toolHomeRoot`, `claude`, and `targets: ["claude"]` |
+| Address | `env.ANTHROPIC_BASE_URL` |
+| Model routing | `model`, `env.ANTHROPIC_DEFAULT_HAIKU_MODEL`, `env.ANTHROPIC_DEFAULT_SONNET_MODEL`, `env.ANTHROPIC_DEFAULT_OPUS_MODEL` |
+| Configured authentication | `env.ANTHROPIC_AUTH_TOKEN`, `env.ANTHROPIC_API_KEY`, `apiKeyHelper` |
 
-The Claude section carries `claudeDir`, `claudeProvidersPath`, `claudeSettingsPath`,
-`providersExists`, `settingsExists`, `configured`, `defaultsPresent`, `providerCount`,
-`inheritedCount`, and `activeProvider` — the last resolved against the defaults, so a delta record
-still reports its active provider.
+Use a missing-value sentinel so presence differs from ordinary null. Compare exact values without
+normalizing trailing slashes/model aliases or resolving helper output. Secret values remain in
+memory and must not appear in result payloads, reasons, logs, or findings.
 
-**A narrowed status omits the other target.** `aps status --claude` carries no `codexDir`, which a
-consumer that reads `codexDir` unconditionally will notice. The alternative — keeping the Codex
-fields in a payload the caller asked to be about Claude — would make `targets` decorative.
+Zero valid identity candidates means unmanaged, one means managed, several mean ambiguous.
+Do not use `.find()` or sorting to select an arbitrary candidate. List/selector rows may identify
+candidate membership, but must label ambiguous membership rather than declare every candidate
+uniquely active. Preserve Codex's ambiguity-safe identity policy with the same reporting meanings.
 
-## 5. Backups
+If damaged records or invalid defaults prevent establishing a complete candidate set, matching is
+unavailable; do not claim uniqueness/unmanaged merely from surviving records.
 
-### The manifest records its target
+### Full consistency and drift
 
-`BackupManifest` gains an optional `target?: TargetId`. `validateBackupManifest()` checks required
-fields and passes unknown ones through, so an added optional field cannot make an existing manifest
-invalid, and a manifest written by an older version simply lacks it.
+For every identity candidate compare full live/effective JSON structurally: compare objects by key
+set and values, arrays by ordered elements, and primitives exactly. Ignore object insertion order.
+No full-equality tie-breaker is allowed: several identity candidates remain ambiguous even if one
+matches the full configuration.
 
-`runMutation()` gains a required `target` argument, following the same convention as its `lockPath`:
-the ten call sites must each state it, and a new mutation cannot inherit a wrong default. It is
-passed straight into `createBackup()`, which writes it into the manifest.
+Return `consistent` and deterministic `differencePaths` per candidate. Report array paths/indices
+without values. Use a `CONFIGURATION_DRIFT` note for valid differences; permissions/plugins/custom
+settings can drift without becoming invalid. Only diagnosed content/field faults lower health.
 
-### Classifying an older manifest
+Apply this policy to current/list/show summaries, doctor/status, and interactive selectors.
+Explicit existing show/reveal contracts remain separate; diagnostic comparison output never
+includes secret values.
+
+## 6. Backup origin
+
+`BackupManifest` gains optional `target?: TargetId`. Required-field validation remains, and the
+known optional field must be checked: if present it is exactly `"codex"` or `"claude"`.
+Unknown extension fields may still be retained. Null, mixed, unknown, arrays, and arbitrary strings
+are invalid values for this metadata.
+
+Each target mutation states its target to `runMutation()` and `createBackup()`.
+No new mutation bypasses the existing lock/backup/rollback wrapper.
+
+Keep `classifyBackupTargets()` for **origin only**, applied in tiers:
+
+1. Valid explicit metadata yields its origin.
+2. Recognized operation names (`claude-*` for known Claude operations; known Codex operations
+   such as add/switch/remove/edit/import/migrate/config writes) yield their origin.
+3. Without recognized provenance, classify known target artifacts and accumulate all matching
+   trusted target roots for remaining paths.
+4. No target evidence yields unknown; both ids yield mixed.
+
+Use an explicit recognized-operation table rather than guessing from any arbitrary string.
+A generic tool-home path is not a Codex origin. A registry-only legacy backup can be classified
+by the known registry artifact when provenance is absent.
+
+`BackupListItem.target` is `TargetId | "mixed" | "unknown"`. Mixed appears in both narrowed lists;
+unknown appears only unfiltered. Valid explicit provenance takes priority over paths even when
+restore impact differs. Listing a corrupt manifest skips it with a warning; explicitly restoring
+it fails through normal validation. Older valid manifests need no migration.
+
+## 7. Restore impact independently of origin
+
+`targetsRestoredBy()` must inspect actual validated restore operations. Do not call the origin
+classifier or consult `manifest.target`/`reason` to decide impact.
+
+For each restored destination, including removal to recover earlier absence:
+
+1. Recognize exact known artifact paths first. `providers.json` belongs to Codex and
+   `claude-providers.json` belongs to Claude, even inside a shared/overlapping root. Known shared
+   tool artifacts, including the shared tool config, have shared ownership.
+2. For other paths, test each trusted target root independently and add every match. There is no
+   Claude-first `if/else` winner when roots overlap.
+3. A path with no known owner/root match is unknown; generic tool-home containment does not prove
+   shared ownership.
+
+Return safe impact metadata on successful rollback:
 
 ```ts
-classifyBackupTargets(manifest, roots: { codexDir; claudeDir; toolHomeDir }): TargetId[];
+data: {
+  // Existing backup identification and restored-file summary are retained.
+  targets: TargetId[];
+  impact: { shared: boolean; unknown: boolean };
+}
 ```
 
-Applied in order, first match wins:
+| Operations classified | targets | impact |
+|---|---|---|
+| Claude registry only | `["claude"]` | shared false, unknown false |
+| Both target paths | Both ids | shared false unless shared artifacts also occur |
+| Only known shared artifacts | `[]` | shared true, unknown false |
+| Unclassifiable paths | Known ids, if any | unknown true |
+| No restore operations | `[]` | shared false, unknown false |
 
-1. `manifest.target`, when present.
-2. The `reason` field: a `claude-` prefix means Claude; the known Codex operation names (`add`,
-   `switch`, `remove`, `edit`, `import`, `migrate`) mean Codex.
-3. Any `restorePath` inside the Claude directory.
-4. Any `restorePath` inside the Codex directory.
-5. Otherwise `[]` — unknown.
+The envelope of rollback always has empty command scope. A manifest with Codex origin and Claude
+restore destinations still reports Claude impact. Human output must distinguish shared-only,
+unknown impact, and known target impact, and avoid presenting origin as completed recovery.
 
-**Step 3 has to be checked before any tool-home or Codex test.** `claude-providers.json` lives in the
-tool home, not in `~/.claude`, so a `claude-remove` backup contains a tool-home path and a
-`claude-switch` backup contains both a tool-home path and a Claude path. Classifying by containment
-without ordering would file Claude backups as Codex.
+Keep `restoreManifest(manifest, allowedRoots)` and its caller-built allowlist. Classifiers do not
+grant restore permission. Historical roots in manifest metadata must never enlarge the allowlist.
+A path rejected by containment fails before completed-impact output; no target flag enables a
+partial restore.
 
-Every Claude mutation already uses a `claude-` operation name, so step 2 does the work for every
-manifest written before this release; steps 3 and 4 catch anything older. An unclassifiable entry is
-`unknown`, never a guess — a wrong label on a backup is worse than a missing one, because `rollback`
-is the command it informs.
+## 8. Verification and release
 
-### `backups list`
+Retain shared pruning's retention policy and never-delete-a-referenced-directory invariant,
+rollback selection/prompts, and shared unlocking behavior. Align help, usage, JSON docs, and
+CHANGELOG with the accepted scope and explicit breaking reporting contract.
 
-`BackupListItem` gains `target: TargetId | "mixed" | "unknown"`. The selection filters:
-`--claude` keeps Claude entries only, `--codex` keeps Codex only, and an `unknown` entry appears in
-the unfiltered list only — matching it to either target would be the guess step 5 refuses to make.
-The human view gains a column.
+Use the PRD acceptance matrix for meaningful regression cases. In-process tests cover scope before
+I/O, local availability, evidence/health, identity ambiguity, consistency, metadata validation,
+origin filtering, and restore ownership/overlaps. E2E tests cover actual JSON streams and exit
+codes for healthy/unhealthy/partial reports and rejected shared flags. Use isolated target homes
+and synthetic credentials; do not touch real configuration.
 
-### `backups prune`, `rollback`, `unlock`
+Existing tests for unmanaged-as-issue, live-lock-as-issue, directory-based configuration,
+first-candidate selection, path-insensitive rollback, and old envelope aliases must be revised.
+Passing existing suites alone does not establish the new rules.
 
-All three are `shared` in the scope table, so `--claude` and `--codex` are refused by the guard
-before any handler runs. `pruneBackups()` and `unlockLock()` are otherwise untouched: the retention
-policy is one policy over one directory, the never-delete-a-referenced-directory rule is unchanged,
-and the lock is one lock.
-
-`rollbackBackup()` gains `targets: TargetId[]` in its output, computed by `classifyBackupTargets()`
-over the manifest it restored. The manifest is already in hand and its paths are already validated
-by the containment check, so this adds no new trust in it.
-
-## 6. Flag guards
-
-`assertFlagsApply()` reads `acceptsTargetFlag()` from the scope table for `--claude` and `--codex`
-and keeps its existing entries for `--full` and `--dry-run`. Its `supportedCommands` callback now
-builds the refusal's command list from the table, so the error message and the check cannot disagree.
-
-**`--codex-dir` with `--claude` is refused** on the three `both` commands. `--codex-dir` is stripped
-by the parser as a global option and is accepted by every command today because every command was
-Codex-facing. On `aps doctor --claude` it names a directory the command will not read. The refusal
-lives in the guard table, keyed on the same scope, and applies only to `both`: on `switchable`
-commands the pair was never meaningful either, but `aps list --claude --codex-dir X` is a
-long-standing accepted form and changing it is not this release's business.
-
-## 7. Residual risks
-
-- **`target` changes value for three commands without a `--claude`.** Covered in §2. It is the only
-  payload change in the release and it is reported in the CHANGELOG.
-- **`doctor` stops reporting `CONFIG_NOT_FOUND` for a target that was never set up.** Covered in §3.
-  A user who expects `healthy: false` on a fresh tool home now sees `healthy: true`; the reason is
-  reported as `configured: false` rather than left silent.
-- **The `configured` heuristic reads directory existence.** A `~/.codex` created by an unrelated
-  tool makes the Codex side count as configured, and the resulting `CONFIG_NOT_FOUND` is a true
-  finding about a broken install. The error direction is the loud one by choice.
-- **Backup classification depends on the `claude-` operation prefix**, which is the third of the
-  three conventions `1.1.1` catalogued. A future target whose operations carry no prefix will classify
-  its pre-`1.1.3` backups as `unknown`. That is the safe failure: the label is shown as unknown and
-  never as another target.
-- **A mixed backup lists as `mixed` and is restored whole.** `rollback` has no partial-restore mode
-  and this release does not add one; the label tells the user what they are about to do.
-- **`status --claude` omits the Codex fields entirely.** A consumer that narrows gains a payload it
-  did not have before and loses keys it may have been reading; keeping both would make `targets`
-  decorative.
-- **`1.2.0` still has to do the real work.** This release builds a scope table, not an abstraction.
-  The storage repositories, record shapes, projection rules, and app services remain per-target
-  copies, and a third target still means writing all of them. What it inherits is a place to declare
-  the target and one function that answers "which target", which is what a `TargetContext` needs in
-  order to be worth introducing.
-- **The lock check is target-neutral and runs under either narrowing.** `aps doctor --claude`
-  reports a stale lock with `target: null`, which is accurate and may read as off-topic in a
-  narrowed run.
-
-## 8. Release mechanics
-
-- `package.json` and both spots in `package-lock.json` move to `1.1.3`; `src/` has no version
-  constant to edit.
-- `tests/release-contract.spec.js` takes `1.1.3`, gains `1.1.3` in the version regex, and slides the
-  PRD/Design existence window to `["1.1.3", "1.1.2", "1.1.1", "1.1.0", "1.0.0"]`.
-- `CHANGELOG.md` gains a `1.1.3` entry naming the two behaviour changes: the `doctor` result for an
-  unconfigured target, and `target` becoming `null` on a bare multi-target command.
-- New specs: `tests/target-scope.spec.js` (the scope table, table-driven over every `CommandId`),
-  `tests/doctor-targets.spec.js`, `tests/claude-status.spec.js`, `tests/backup-targets.spec.js`.
-- `tests/e2e/commands.spec.js`, `tests/e2e/errors.spec.js`, and `tests/e2e/renderers.spec.js` carry
-  the two hardcoded lists and the rendered views this change alters.
-- `docs/cli-usage.md` gains the command/target matrix and the `--codex-dir` refusal;
-  `docs/agent-provider-switch-technical-architecture.md` gains the scope table and the
-  routing-versus-scope distinction.
-- `README.md`, `README.CN.md`, `README.AI.md`, and `docs/Tests/testing.md` carry the version.
-- `docs/agent-provider-switch-2.x-roadmap.md` records that the `1.1.x` line narrows its §4
-  rejection: a `--target` flag replacing `--claude` is still rejected, and the target becoming a
-  first-class value is now the shipped direction.
-- Publishing is a manual step.
-
-## 9. Acceptance criteria
-
-See `docs/PRD/agent-provider-switch-prd-v1.1.3.md`. In short: `doctor` reports both targets and is
-healthy on an unconfigured machine; `--claude` skips the Codex probe; every issue carries a target;
-`status` is additive with a `claude` section and omits the other target when narrowed; `backups
-list` labels entries including pre-`1.1.3` ones and the tool-home containment ordering is asserted;
-`prune`, `rollback`, and `unlock` refuse both target flags; `rollback` reports what it restored; and
-`npm run build`, `npx tsc --noEmit`, `node tests/run-tests.js`, and `npm run test:e2e` pass.
+Synchronize release versions and documentation under the repository checklist; keep the existing
+historical PRD/Design existence checks. Run build, type checking, in-process tests, and E2E tests.
+Publishing remains manual. The review record distinguishes completed documentation from remaining
+implementation gaps.

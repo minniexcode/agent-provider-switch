@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { BackupManifest, FileBackupEntry } from "../domain/backup";
 import { DEFAULT_BACKUP_RETENTION } from "../domain/backups";
+import type { TargetId } from "../domain/target";
 import { cliError, normalizeError } from "../domain/errors";
 import { createBackup, pruneBackups, restoreManifest, saveLatestManifest } from "../storage/backup-repo";
 import { withToolLock } from "../storage/lock-repo";
@@ -30,12 +31,19 @@ export type MutationData = {
  * `lockPath` is required rather than defaulted. The whole recovery model rests on there
  * being exactly one shared lock file, and a caller that omitted the argument would silently
  * create a second one that no other command contends for.
+ *
+ * `target` is required for the same reason: it is recorded in the backup manifest, and the
+ * alternative — inferring it from the operation name — is a convention `classifyBackupTargets()`
+ * reads only for manifests written before this argument existed. A new mutation that inherited a
+ * wrong default would label its backup as another target, which is the one thing `backups list`
+ * must never do.
  */
 export function runMutation<TData extends Record<string, unknown>>(args: {
   lockPath: string;
   backupsDir: string;
   latestBackupPath: string;
   operation: string;
+  target: TargetId;
   files: ManagedFile[];
   mutate: (context: MutationContext) => TData;
 }): { data: TData & MutationData; warnings: string[] } {
@@ -44,7 +52,7 @@ export function runMutation<TData extends Record<string, unknown>>(args: {
   const retentionWarnings: string[] = [];
 
   const lock = withToolLock(args.lockPath, args.operation, () => {
-    const backup = createBackup(args.backupsDir, args.operation, args.files);
+    const backup = createBackup(args.backupsDir, args.operation, args.files, args.target);
     try {
       const data = args.mutate({ backup });
       // Record the successful backup only after the mutation completes.

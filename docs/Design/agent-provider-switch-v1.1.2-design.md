@@ -1,180 +1,93 @@
 # agent-provider-switch v1.1.2 Design Document
 
-**One error vocabulary.** The one deliberate `--json` contract break on the `1.x` line. It changes
-five names in the `ErrorCode` union and removes one duplicated payload field. No behaviour changes:
-every refusal is still the same refusal, with a different code string.
+This design implements [the v1.1.2 PRD](../PRD/agent-provider-switch-prd-v1.1.2.md): one command-error
+vocabulary and removal of duplicated Claude payload routing. These are deliberate breaking changes,
+without a compatibility window. Later scope changes in `1.1.3` are also breaking.
 
-Its companions are `docs/Design/agent-provider-switch-v1.1.1-design.md` (the target becomes
-explicit) and `docs/Design/agent-provider-switch-v1.1.3-design.md` (shared-state commands report
-both targets). This release is only expressible because `1.1.1` put `target` on the envelope first.
+The design specifies the required result; it does not certify that every requirement is already
+implemented. Current verification belongs in the [review record](../Reviews/agent-provider-switch-1.1.x-prd-review.md).
 
-**Citation convention.** This document names symbols rather than line numbers.
+## 1. Change the union and the producers together
 
-This release closes no roadmap finding.
+`src/domain/errors.ts` loses five old members:
 
-## Overview
+| Retired member | Producer replacement |
+|---|---|
+| `CLAUDE_PROVIDER_NOT_FOUND` | `PROVIDER_NOT_FOUND` |
+| `CLAUDE_PROVIDERS_NOT_FOUND` | `PROVIDERS_NOT_FOUND` |
+| `CLAUDE_PROVIDERS_PARSE_ERROR` | `PROVIDERS_PARSE_ERROR` |
+| `CLAUDE_PROVIDER_ALREADY_EXISTS` | `PROVIDER_ALREADY_EXISTS` |
+| `CLAUDE_SETTINGS_NOT_FOUND` | None; no command-error producer |
 
-Two decisions shape everything else.
+Only `PROVIDER_ALREADY_EXISTS` is added to the union: five removed, one added, net minus four.
+Codex `add-provider.ts` must use it for duplicate names as well as Claude `claude-add-provider.ts`.
 
-**The codes are renamed at their producers, not translated at the boundary.** A mapping layer in the
-renderer would keep both vocabularies alive and leave the `ErrorCode` union unable to enforce
-anything. Roughly nine `cliError()` call sites change their literal, and after that there is one
-vocabulary in the repository and a test that says so.
+Change `cliError()` call sites and any required-file reader error arguments directly. The renderer
+and `normalizeError()` must not translate old names to new ones; aliases would leave two producer
+vocabularies type-correct.
 
-**The prefix goes because a better carrier exists, not because prefixes are bad.** `target` already
-answers "which target" on every envelope, on success and on failure. A code prefix was the same
-information, encoded worse: it could only be read by string matching, it was absent for Codex, and
-it forced the *condition* to be renamed whenever the *target* was.
+Messages retain target-specific context. Error details do not gain a duplicate target field; the
+envelope already carries accepted routing.
 
-## 1. The renamed set
+## 2. Audit actual failure conditions
 
-The `ErrorCode` union loses four entries and gains one. The net is minus three.
+The rename table alone cannot establish symmetry. Audit callable workflows and assert:
 
-| Removed | Added | Producer sites |
-|---|---|---|
-| `CLAUDE_PROVIDER_NOT_FOUND` | `PROVIDER_NOT_FOUND` | 5 |
-| `CLAUDE_PROVIDERS_NOT_FOUND` | `PROVIDERS_NOT_FOUND` | 2 |
-| `CLAUDE_PROVIDERS_PARSE_ERROR` | `PROVIDERS_PARSE_ERROR` | 1 |
-| `CLAUDE_PROVIDER_ALREADY_EXISTS` | `PROVIDER_ALREADY_EXISTS` | 1 |
-| `CLAUDE_SETTINGS_NOT_FOUND` | — | 0 |
+| Failure condition | Code for either target |
+|---|---|
+| Specified provider absent | `PROVIDER_NOT_FOUND` |
+| Required registry absent / required collection empty | `PROVIDERS_NOT_FOUND` |
+| Duplicate name | `PROVIDER_ALREADY_EXISTS` |
+| Registry JSON or structural shape invalid | `PROVIDERS_PARSE_ERROR` |
 
-`CLAUDE_PROVIDER_ALREADY_EXISTS` is **not** merged into `PROVIDERS_ALREADY_EXISTS`, and the
-one-character difference between the result and that neighbour is the reason to look closely at it.
-`PROVIDERS_ALREADY_EXISTS` is raised by `init` and by `import` when the registry **file** already
-exists; `CLAUDE_PROVIDER_ALREADY_EXISTS` is raised by `add` when a **record** with that provider name
-already exists. They are different conditions that happened to sound alike. Merging them would have
-made one code mean "a file exists" and "a name is taken", and a consumer could not tell which. The
-singular form is the new name: `PROVIDER_ALREADY_EXISTS`.
+Codex and Claude interactive selectors use the plural collection code for no candidates. Avoid
+changing list/current success behavior to manufacture a failure covered by the table.
 
-`CLAUDE_SETTINGS_NOT_FOUND` has no producer. It is declared in the union and thrown nowhere, so its
-deletion has no observability: no test can go red, no user can notice. It is removed as dead
-vocabulary, and a test asserts the union has no code without a producer (see §4).
+`PROVIDERS_ALREADY_EXISTS` remains the migration-strategy refusal for a nonempty registry.
+Its reachable paths include `migrate` dispatch and setup strategy handling. Repeated `init`
+succeeds, and `import` replaces or explicitly merges; neither is a valid test producer for this
+code.
 
-**The messages do not change.** The Claude producers keep saying "Claude provider "x" was not
-found.", because that sentence describes the state, and the code names the condition. Two targets
-sharing a code while keeping their own sentences is the split that makes the merge worth doing;
-collapsing the sentences too would make a Claude failure read as a Codex one.
+Error symmetry does not generalize target-specific record formats, mutation flows, or prompts.
+Validation errors concerning different input types remain governed by their existing contracts.
 
-## 2. Removing `data.target`
+## 3. Remove Claude payload routing
 
-Seven `src/app/claude-*.ts` services write `target: "claude"` into their `data`. Every one is
-deleted, and the envelope's `target` — added in `1.1.1`, written centrally by `renderSuccess()` and
-`renderFailure()` from `ctx.target` — is the replacement.
+Remove the literal `target: "claude"` from the seven Claude app-service result payloads.
+The renderer already receives the resolved target through its context from `1.1.1`.
+Codex data had no corresponding field.
 
-Nothing else reads it. `1.1.1` moved the human renderer off `data.target` and onto the resolved
-target, so this release deletes a field that already has no reader. That sequencing is the whole
-point of splitting the two releases: at the moment of deletion, the field is provably unused inside
-the repository, and the only thing that can observe its absence is an external `--json` consumer.
+Assert envelope routing for successful and failed Claude dispatch. The payload removal does not
+change the route; `1.1.3` subsequently makes accepted command scope authoritative and expands
+reporting payloads.
 
-**A spec pins the equality before the deletion.** `1.1.1` asserts that for every Claude-capable
-command `data.target === ctx.target`. With that asserted, removing the field cannot change what
-`target` resolves to, and this release's contract break is exactly one field wide rather than "we
-believe nothing else read it".
+## 4. Enforce the correct namespace
 
-## 3. Where the codes come from
+Tests must inspect the `ErrorCode` union and error-producing positions, or execute real producers.
+A source-wide `/CLAUDE_[A-Z_]+/` check is invalid. Even a check for every quoted Claude-prefixed string
+is too broad: diagnostic issue codes can use that prefix legitimately.
 
-**No translation layer.** `normalizeError()` keeps its current shape: it passes a thrown
-`CliErrorShape` through and falls back to `INVALID_ARGUMENT`. It does not map old codes to new ones,
-because a normalization that rewrote codes would be the only place the two vocabularies knew about
-each other, and the union's type check would no longer reach the producers.
+Environment variables such as `APS_CLAUDE_DIR`, identifiers such as `CLAUDE_COMMANDS`, and issue
+codes inside successful reports are separate namespaces. A diagnostic issue sharing a retired
+error's spelling is not the retired command error returning.
 
-**No aliases in the union.** The four removed names are gone from the type, not deprecated in it.
-Keeping them as `never`-produced members would let a future caller use one and type-check.
+A producer census can guard against newly unused members. It must document the actual existing
+exceptions rather than claiming every union member is thrown. At review time the recorded
+unproduced members were `LIVE_STATE_DRIFT`, `AUTH_JSON_SYNC_FAILED`,
+`ACTIVE_PROVIDER_UNRESOLVED`, `UNMANAGED_ACTIVE_PROFILE`, and `PROVIDER_BASE_URL_MISMATCH`.
+This release does not delete them or unify error and diagnostic namespaces.
 
-**`error.details` is untouched.** The payloads already carry the file involved and, for a missing
-provider, the provider name. `target` is not added to `details`: the envelope has it, and a second
-copy is the mistake this release exists to stop repeating.
+## 5. Verification and release
 
-## 4. Enforcement
+Use real producer cases for missing name, empty selection, duplicate name, malformed registry,
+and migration refusal. Include successful empty Claude list, unmanaged/no-settings current,
+idempotent init, and import replacement/merge as regression cases.
 
-Three corrections to this section were made during implementation; each was a statement about the
-tree that the tree did not support, and each is recorded here rather than quietly fixed.
+Update `tests/error-vocabulary.spec.js` and affected error assertions. E2E coverage verifies
+the JSON error stream, exit `1`, and useful human output for the changed codes. Preserve secret
+redaction; no real credentials are needed.
 
-- **`src/` contains no target-prefixed error code.** The sketch was a grep for `/CLAUDE_[A-Z_]+/`
-  over every `.ts` file under `src/`. That regex cannot hold: `APS_CLAUDE_DIR`, `CLAUDE_COMMANDS`,
-  and `CLAUDE_DIR_ENV_NAME` all contain the substring legitimately, so the bare form would need an
-  allowlist of identifiers — the kind of exception that hides the real offender it exists to catch.
-  The implemented test requires the **quotes** a code string has and an identifier does not
-  (`/["']CLAUDE_[A-Z_]+["']/`), which matches `"CLAUDE_PROVIDER_NOT_FOUND"` and not
-  `"APS_CLAUDE_DIR"`. Nothing is allowlisted, and it is the same shape as the `1.0.0` rename's
-  negative assertion: it keeps a contributor from introducing `CLAUDE_SOMETHING_NOT_FOUND` out of
-  habit.
-- **Every declared code has a producer.** A spec collects the string literals passed to `cliError()`
-  and to `readRequiredFile()`'s code parameter, and asserts the set of unproduced `ErrorCode`
-  members is exactly a recorded list. That list has **five** entries, not one:
-  `LIVE_STATE_DRIFT`, `AUTH_JSON_SYNC_FAILED`, `ACTIVE_PROVIDER_UNRESOLVED`,
-  `UNMANAGED_ACTIVE_PROFILE`, and `PROVIDER_BASE_URL_MISMATCH`. The `DESTRUCTIVE_REMOVE_BLOCKED`
-  this section originally named is not in `ErrorCode` at all — it is a member of the *config-issue*
-  union in `src/domain/config.ts`, a different space the census never walks, which is why naming it
-  here was wrong even though the observation about it ("only ever rendered, never produced") is
-  accurate. The last two of the five are also doctor-facing issue strings that were given error
-  codes as well; the first three are simply dead. The list is asserted exactly in both directions,
-  so declaring a new unproduced code fails, and producing one of these also fails until it is
-  deleted from the list.
-- **The two similar codes stay distinct.** A spec asserts `aps add --claude <duplicate>` yields
-  `PROVIDER_ALREADY_EXISTS` and a `migrate` into a non-empty registry yields
-  `PROVIDERS_ALREADY_EXISTS`, so a later "cleanup" that merges the pair is caught. The originally
-  sketched second case, `aps init` over an existing registry, does not raise the code: `init` is
-  idempotent and returns success. `import` does not raise it either — it replaces the file. The
-  reachable producers are `migrate` in `handlers.ts` and `setup-codex.ts`, and the test names the
-  first.
-
-## 5. Residual risks
-
-- **Four dead codes stay in the union.** `CLAUDE_SETTINGS_NOT_FOUND` was deleted because it was the
-  code this release's rename table covered, but `LIVE_STATE_DRIFT`, `AUTH_JSON_SYNC_FAILED`,
-  `ACTIVE_PROVIDER_UNRESOLVED`, and `UNMANAGED_ACTIVE_PROFILE` are just as unproduced and are left
-  alone: deleting them is a break of the same class, and this release's break is deliberately one
-  table wide. `PROVIDER_BASE_URL_MISMATCH` joins them for a different reason — the doctor renders it
-  as an issue, so the name is live even though nothing throws it as an error. The census test pins
-  the set, which is the mitigation: the debt is recorded in a test that fails if it grows.
-- **`PROVIDER_NOT_FOUND` and `PROVIDERS_NOT_FOUND` differ by one character.** This is a
-  pre-existing hazard that this release makes marginally more visible, because the Claude vocabulary
-  no longer offers a contrast that reminds a reader the pair exists. Renaming either is a break of
-  the same class as this one, so doing both at once was considered and rejected: a consumer
-  migrating `CLAUDE_*` should not also have to migrate a code that has been stable since `0.1.0`.
-  Accepted, and recorded here rather than fixed.
-- **The error vocabulary and doctor's issue vocabulary overlap by name.** `run-doctor` emits an issue
-  whose `code` is the string `"PROVIDERS_NOT_FOUND"`, and `renderDoctorIssueNextStep()` switches on
-  `"CONFIG_NOT_FOUND"` and `"PROVIDERS_NOT_FOUND"`. Those are issue codes inside a successful
-  result, not error codes, and they are not type-checked against the union. Unifying the two spaces
-  is not proposed: an issue is a finding on a successful run and an error is a failed run, and
-  conflating them would make `healthy: false` indistinguishable from a crash. `1.1.3` adds `target`
-  to each issue, which is the dimension the issue space actually needed.
-- **An external consumer of the old codes breaks silently.** There is no deprecation window and no
-  `legacyCode`. The mitigation is documentation: the CHANGELOG entry leads with the break, and
-  `docs/cli-usage.md` states that the envelope's `target` is the supported way to tell the two lines
-  apart. The repository's own `--json` consumers are its tests, and they are updated in the same
-  commit.
-- **A stale `dist/` reads as a passing suite.** `runBuiltCli()` calls the built output, so running
-  the new specs without `npm run build` tests the old vocabulary. The runner builds first; a
-  contributor who invokes a spec directly does not. Unchanged from every prior release.
-
-## 6. Release mechanics
-
-- `package.json` and both spots in `package-lock.json` move to `1.1.2`; `src/` has no version
-  constant to edit.
-- `tests/release-contract.spec.js` takes `1.1.2`, gains `1.1.2` in the version regex, and slides the
-  PRD/Design existence window to `["1.1.2", "1.1.1", "1.1.0", "1.0.0", "0.4.1"]`.
-- `CHANGELOG.md` gains a `1.1.2` entry. It is the only entry on the `1.x` line that opens with
-  **Breaking**, and it carries the rename map so the migration is one table rather than a diff.
-- New spec: `tests/error-vocabulary.spec.js` — the `src/` grep, the producer census, and the
-  singular/plural distinction.
-- `tests/e2e/claude.spec.js` carries four asserted codes, all of which change.
-- `tests/e2e/errors.spec.js` and `tests/e2e/renderers.spec.js` carry the human and JSON assertions
-  for the shared codes, which do not change. The Claude-side twin turned out to belong in the new
-  in-process spec rather than in an e2e one: `show --claude ghost` against a seeded registry is the
-  whole assertion, and it does not need a child process to make its point.
-- `docs/cli-usage.md`: the JSON Contract section, the Claude workflow section, and Version section.
-  `docs/agent-provider-switch-technical-architecture.md` gains the invariant "an error code names a
-  condition and never a target".
-- `README.md`, `README.CN.md`, `README.AI.md`, and `docs/Tests/testing.md` carry the version.
-- Publishing is a manual step.
-
-## 7. Acceptance criteria
-
-See `docs/PRD/agent-provider-switch-prd-v1.1.2.md`. In short: no `CLAUDE_*` string survives in
-`src/`; every declared code has a producer except the recorded `DESTRUCTIVE_REMOVE_BLOCKED`;
-`PROVIDER_ALREADY_EXISTS` and `PROVIDERS_ALREADY_EXISTS` are asserted distinct; a Claude success
-payload has no `data.target`; exit codes and messages are unchanged; and `npm run build`,
-`npx tsc --noEmit`, `node tests/run-tests.js`, and `npm run test:e2e` pass.
+Run the repository build, type check, in-process suite, and E2E suite. Tests asserting deliberate
+old behavior must change with the contract. Follow the synchronized release checklist and publish
+manually. The CHANGELOG must state the full migration rather than imply this is the final breaking
+release on the line.

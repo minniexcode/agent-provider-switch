@@ -51,8 +51,12 @@ export async function promptForProviderSelection(
       };
     });
 
+  // The plural code, because the condition is the plural one: there is no provider to choose from,
+  // not a named provider that could not be found. The Claude selector raises the same code for the
+  // same condition (`1.1.2`), and a caller cannot tell the two targets apart by their error code —
+  // which is the point of the shared vocabulary.
   if (choices.length === 0) {
-    throw cliError("PROVIDER_NOT_FOUND", "No providers are configured.");
+    throw cliError("PROVIDERS_NOT_FOUND", "No providers are configured.");
   }
 
   return runtime.selectOne(message, choices);

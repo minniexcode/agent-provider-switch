@@ -4,63 +4,6 @@ const assert = require("node:assert/strict");
 const { makeToolHomeWithManagedState, runJsonCli } = require("./helpers");
 
 const { TARGET_IDS, resolveTarget } = require("../dist/domain/target.js");
-const { assertFlagsApply } = require("../dist/commands/flag-guards.js");
-const { getCommandDefinitions } = require("../dist/commands/registry.js");
-
-/**
- * Which target flags each command accepts, one flag at a time.
- *
- * Written out rather than derived from `CLAUDE_COMMANDS`, because a derived table would agree with
- * the code by construction and would therefore assert nothing. This is the declaration a new
- * command has to be added to; `the scope table covers every command the registry defines` is what
- * makes forgetting it a failure rather than a silent pass.
- */
-const SCOPE = {
-  "config-show": { claude: false, codex: true },
-  "config-list-profiles": { claude: false, codex: true },
-  "config-compact": { claude: true, codex: false },
-  init: { claude: false, codex: true },
-  migrate: { claude: false, codex: true },
-  setup: { claude: false, codex: true },
-  list: { claude: true, codex: true },
-  show: { claude: true, codex: true },
-  current: { claude: true, codex: true },
-  status: { claude: false, codex: true },
-  edit: { claude: false, codex: true },
-  add: { claude: true, codex: true },
-  switch: { claude: true, codex: true },
-  remove: { claude: true, codex: true },
-  import: { claude: false, codex: true },
-  export: { claude: false, codex: true },
-  "backups-list": { claude: false, codex: true },
-  "backups-prune": { claude: false, codex: true },
-  doctor: { claude: false, codex: true },
-  unlock: { claude: false, codex: true },
-  rollback: { claude: false, codex: true },
-};
-
-/**
- * Reproduces the decision order `executeCommand` uses — the guard table first, then
- * `resolveTarget()` — so the matrix below tests the real ordering rather than one half of it.
- */
-function decide(command, { claude = false, codex = false } = {}) {
-  const options = new Map();
-  if (claude) options.set("--claude", []);
-  if (codex) options.set("--codex", []);
-
-  try {
-    assertFlagsApply(command, options);
-  } catch (error) {
-    return { outcome: "refused", code: error.code, message: error.message };
-  }
-
-  const resolution = resolveTarget({ command, claudeRequested: claude, codexRequested: codex });
-  if ("refusal" in resolution) {
-    return { outcome: "refused", code: resolution.refusal.code, message: resolution.refusal.message };
-  }
-
-  return { outcome: "accepted", target: resolution.target };
-}
 
 module.exports = {
   name: "target resolution",
@@ -104,73 +47,22 @@ module.exports = {
       },
     },
     {
-      name: "the scope table covers every command the registry defines",
-      run() {
-        const defined = getCommandDefinitions()
-          .map((command) => command.id)
-          .sort();
-        assert.deepEqual(
-          Object.keys(SCOPE).sort(),
-          defined,
-          "every command needs a target-scope decision, and only real commands may appear here"
-        );
-      },
-    },
-    {
-      name: "the accept/refuse matrix holds for every command, one flag at a time",
-      run() {
-        for (const [command, scope] of Object.entries(SCOPE)) {
-          for (const [flag, accepted] of [
-            ["--claude", scope.claude],
-            ["--codex", scope.codex],
-          ]) {
-            const result = decide(command, { [flag.slice(2)]: true });
-            if (accepted) {
-              assert.equal(
-                result.outcome,
-                "accepted",
-                `${command} ${flag} must be accepted, got: ${result.message}`
-              );
-            } else {
-              assert.equal(result.outcome, "refused", `${command} ${flag} must be refused`);
-              assert.equal(result.code, "INVALID_ARGUMENT", `${command} ${flag}`);
-            }
-          }
-        }
-      },
-    },
-    {
-      name: "a command that refuses one flag still refuses the pair, and one that takes both refuses the pair",
-      run() {
-        // The pair never resolves. Every command falls into one of three buckets, and each bucket
-        // is refused for a different reason — which is why this asserts the message, not just the
-        // outcome. A precedence rule would make the third bucket succeed with a target.
-        for (const [command, scope] of Object.entries(SCOPE)) {
-          const result = decide(command, { claude: true, codex: true });
-          assert.equal(result.outcome, "refused", `${command} --claude --codex must be refused`);
-          assert.equal(result.code, "INVALID_ARGUMENT", command);
-
-          if (!scope.claude) {
-            assert.match(result.message, /does not support --claude/, command);
-          } else if (!scope.codex) {
-            assert.match(result.message, /has no Codex form/, command);
-          } else {
-            assert.match(result.message, /cannot be combined/, command);
-          }
-        }
-      },
-    },
-    {
       name: "a named flag reaches the resolved target, and the default does not need to be named",
-      run() {
-        const explicit = decide("list", { codex: true });
-        assert.equal(explicit.target, "codex");
+      async run() {
+        // Asked of a `switchable` command, which is the scope `resolveTarget()`'s `target` arm
+        // still answers for: a bare `status` now covers two targets and answers `null` instead,
+        // which is where the scope spec takes over.
+        const explicit = await runJsonCli({
+          toolHomeDir: makeToolHomeWithManagedState(),
+          args: ["list", "--codex", "--json"],
+        });
+        assert.equal(explicit.payload.target, "codex");
 
-        const implicit = decide("list");
-        assert.equal(implicit.target, "codex");
-
-        const claude = decide("list", { claude: true });
-        assert.equal(claude.target, "claude");
+        const implicit = await runJsonCli({
+          toolHomeDir: makeToolHomeWithManagedState(),
+          args: ["list", "--json"],
+        });
+        assert.equal(implicit.payload.target, "codex");
       },
     },
     {
@@ -183,21 +75,25 @@ module.exports = {
         });
         assert.equal(success.status, 0, success.stderr);
         assert.equal(success.payload.target, "claude");
+        assert.deepEqual(success.payload.targets, ["claude"]);
         assert.equal(success.payload.command, "list");
-
-        // The default, stated without a flag, is Codex.
-        const defaulted = await runJsonCli({ args: ["status", "--json"] });
-        assert.equal(defaulted.payload.target, "codex");
 
         // Failure: the refusal is raised before the handler runs, so the envelope has to describe
         // the requested target rather than the one that would have applied. `null` is asserted
         // with `in` as well as by value, because a dropped key and an explicit null read the same
         // through `JSON.stringify` unless the key's presence is checked.
-        const refused = await runJsonCli({ args: ["status", "--claude", "--json"] });
+        //
+        // The pair is the example because it is the refusal that survives `1.1.3`: the narrowed
+        // `status --claude` this used to assert against is a supported invocation now.
+        const refused = await runJsonCli({ args: ["doctor", "--claude", "--codex", "--json"] });
         assert.equal(refused.status, 1);
         assert.equal(refused.payload.error.code, "INVALID_ARGUMENT");
+        assert.match(refused.payload.error.message, /cannot be combined/);
         assert.ok("target" in refused.payload, "the failure envelope must state a target");
         assert.equal(refused.payload.target, null);
+        // `[]` rather than the two targets the flags disagree about: nothing was resolved, and a
+        // list here would claim the command had a target when it did not.
+        assert.deepEqual(refused.payload.targets, []);
       },
     },
     {
@@ -212,6 +108,9 @@ module.exports = {
         assert.equal(result.payload.error.code, "INVALID_ARGUMENT");
         assert.match(result.payload.error.message, /Missing provider name for show --claude/);
         assert.equal(result.payload.target, "claude");
+        // A failure after the scope was accepted keeps it: the scope was decided from the command
+        // line before any file was read, so nothing the handler does afterwards can un-resolve it.
+        assert.deepEqual(result.payload.targets, ["claude"]);
 
         // And the Codex form of the same mistake, which resolves to the other target.
         const codex = await runJsonCli({ args: ["show", "--json"] });

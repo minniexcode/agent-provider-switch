@@ -194,8 +194,16 @@ async function runBuiltCli(input) {
   // without arranging the root overwrites the developer's live settings. Guarded here, beside
   // the Codex equivalent, so it does not depend on each spec remembering.
   // `withClaudeEnv()` sets the variable before calling in and is left alone.
-  if (args.includes("--claude") && !process.env.APS_CLAUDE_DIR) {
-    overrides.APS_CLAUDE_DIR = makeTempDir("agent-provider-switch-claude-");
+  //
+  // Set for every call, not only the `--claude` ones: `doctor` and `status` report both targets
+  // unless narrowed, so a bare invocation reads the Claude root too, and an unset variable would
+  // make the answer depend on whatever the developer's own `~/.claude` happens to hold.
+  //
+  // Nested and not created, for the same reason `withClaudeEnv()` uses one: the Claude directory's
+  // existence is part of what `doctor` reports as configured, so a root created up front would add
+  // Claude findings to every bare run in the suite.
+  if (!process.env.APS_CLAUDE_DIR) {
+    overrides.APS_CLAUDE_DIR = path.join(makeTempDir("agent-provider-switch-claude-root-"), "claude");
   }
 
   const stdout = [];
